@@ -703,7 +703,8 @@ function calcTargets(p = goals().profile) {
   const target = +p.custom > 0 ? +p.custom : tdee + +p.goal;
   return { bmr, tdee, target, protein: Math.round(p.weight * p.proteinPerKg), perWeek: Math.round(((target - tdee) * 7 / 7700) * 100) / 100 };
 }
-const dayTarget = (i) => calcTargets().target + (goals().schedule[i].train ? +goals().prefs.extraTrainKcal : 0);
+// food target for a weekday: base target + that day's training & cardio (auto, from Workouts) or a fixed training-day bump
+const dayTarget = (i) => calcTargets().target + (state.workout && W().autoKcal ? exerciseKcalForDay(i) : goals().schedule[i].train ? +goals().prefs.extraTrainKcal : 0);
 const isMain = (r) => r.country !== "Basics" && r.nut.kcal >= 250 && !r.tags.some((t) => ["condiment", "dip"].includes(t));
 const sideKcal = (r) => (r.side ? SIDES[r.side].kcal : 0);
 const portionFor = (r, target) => Math.min(2.5, Math.max(0.75, Math.round(((target - sideKcal(r)) / r.nut.kcal) * 4) / 4));
@@ -843,6 +844,8 @@ function buildWeek(costW = 0) {
       add(train, "train", wo ? `Training: ${wo.name} (about ${wo.minutes} min)` : "Training");
       if (train - 90 > wake + 90) add(train - 90, "snack", `${ADDON.banana.name} (pre-workout)`, ADDON.banana.kcal, ADDON.banana.p);
     }
+    const cmin = cardioPlan().days[d.i];
+    if (cmin) add(train ? train + 60 : 17 * 60 + 30, "train", `${cardioPlan().opt.name}: ${cmin} min (WHO 150 min/week)`);
     const sess = sessions.find((x) => x.date === d.date);
     if (sess) add(sess.start, "cook", `Batch cook: ${sess.recipes.map((id) => BY_ID[id].name).join(" + ")} (about ${fmtMin(sess.minutes)}, ${fmtMin(sess.handsOn)} hands-on)${sess.frozen.length ? `. Freeze ${sess.frozen.join(", ")}` : ""}`, 0, 0, { session: true });
     const quick = entries.find((e) => e.date === d.date && e.type === "cook" && e.meal !== "prep");
@@ -925,9 +928,9 @@ function renderGoals() {
           <label class="field">Height (cm) <input type="number" data-g="profile.height" value="${p.height}" style="width:80px"></label>
           <label class="field">Weight (kg) <input type="number" step="0.1" data-g="profile.weight" value="${p.weight}" style="width:80px"></label>
         </div>
-        <label class="field">Activity ${sel("profile.activity", p.activity, [[1.2, "Mostly sitting, little exercise"], [1.375, "Light: 1–3 workouts a week"], [1.55, "Moderate: 3–5 workouts a week"], [1.725, "Very active: 6–7 workouts or a physical job"]])}</label>
+        <label class="field">Activity ${sel("profile.activity", p.activity, [[1.2, "Mostly sitting, little exercise"], [1.3, "Light daily life — workouts added per day (Workouts tab)"], [1.375, "Light: 1–3 workouts a week"], [1.55, "Moderate: 3–5 workouts a week"], [1.725, "Very active: 6–7 workouts or a physical job"]])}</label>
         <div class="row">
-          <label class="field">Goal ${sel("profile.goal", p.goal, [[0, "Maintain weight"], [250, "Lean gain (+250 kcal)"], [400, "Steady gain (+400 kcal)"], [550, "Faster gain (+550 kcal)"]])}</label>
+          <label class="field">Goal ${sel("profile.goal", p.goal, [[0, "Maintain weight"], [250, "Lean gain (+250 kcal)"], [400, "Steady gain (+400 kcal)"], [550, "Faster gain (+550 kcal)"], ...([0, 250, 400, 550].includes(+p.goal) ? [] : [[p.goal, `Science-based for you (+${p.goal} kcal)`]])])}</label>
           <label class="field">Protein ${sel("profile.proteinPerKg", p.proteinPerKg, [[1.6, "1.6 g/kg"], [1.8, "1.8 g/kg"], [2, "2.0 g/kg"], [2.2, "2.2 g/kg"]])}</label>
           <label class="field">Or set kcal yourself <input type="number" data-g="profile.custom" value="${p.custom || ""}" placeholder="auto" style="width:90px"></label>
         </div>
@@ -942,7 +945,7 @@ function renderGoals() {
       <div class="card"><h3>2 · Preferences</h3>
         <label class="field">Hardest recipes to include ${sel("prefs.maxDiff", P.maxDiff, [[1, "Beginner only"], [2, "Up to intermediate"], [3, "Anything"]])}</label>
         <label class="field">Weekly food budget (${esc(currency())}) <input type="number" step="5" id="g-budget" value="${state.settings.weeklyBudget || ""}" placeholder="no limit" style="width:100px"></label>
-        <label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>
+        ${W().autoKcal ? `<p class="small muted">Training & cardio calories are added to each day automatically from your <a href="#workouts">Workouts</a> program.</p>` : `<label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>`}
         <label class="row small"><input type="checkbox" data-g="prefs.favs" ${P.favs ? "checked" : ""}> Prefer my ♥ favorites (${state.favorites.length})</label>
         <label class="row small"><input type="checkbox" data-g="prefs.veg" ${P.veg ? "checked" : ""}> Vegetarian only</label>
         <label class="field" style="margin-top:12px">Build for ${sel("prefs.week", P.week, [["this", "This week (from today)"], ["next", "Next week"]])}</label>
@@ -1028,102 +1031,472 @@ function weighInSummary() {
   return `${advice}<div class="row" style="margin-top:8px">${W.slice(-8).map((w) => `<span class="chip">${w.date.slice(5)}: ${w.kg} kg</span>`).join("")}</div>`;
 }
 
-// ───────────── WORKOUTS: strength program that follows your Goals schedule ─────────────
-const EX = window.EXERCISES || {};
-const SESSION_NAMES = { 1: ["Full body"], 2: ["Full body A", "Full body B"], 3: ["Full body A", "Full body B"], 4: ["Upper", "Lower"], 5: ["Push", "Pull", "Legs", "Upper", "Lower"], 6: ["Push", "Pull", "Legs"] };
-const trainingDays = () => goals().schedule.map((s, i) => (s.train ? i : -1)).filter((i) => i >= 0);
-const weekNumber = () => Math.floor((weekStart() - new Date(2020, 0, 6)) / (7 * 864e5));
-function setsFor(id) {
-  const e = EX[id], W = state.workout;
-  if (W.equip === "bodyweight") return id === "core" ? { sets: 3, reps: "30–60 s", top: 60 } : { sets: 3, reps: "8–20", top: 20 };
-  if (e.type === "compound") return W.level === "beginner" ? { sets: 3, reps: "6–10", top: 10 } : { sets: 4, reps: "5–8", top: 8 };
-  return { sets: 3, reps: id === "core" ? "10–15 (or 30–60 s)" : "10–15", top: 15 };
+// ───────────── WORKOUTS: personalised training, built like the cooking side ─────────────
+// Library (≈ Discover) · Exercise page (≈ Recipe) · Workout mode (≈ Cook mode) · Program (≈ Plan, shared with Goals)
+// Volume check (≈ Batch prep) · Progress & badges (≈ Journal) · Equipment (≈ Shop) · Science (why every number is what it is)
+const XLIB = window.EXERCISE_LIB || [];
+const XBY = Object.fromEntries(XLIB.map((e) => [e.id, e]));
+const LEVELS = { beginner: 1, intermediate: 2, advanced: 3 };
+function W() {
+  const w = state.workout;
+  if (w.equip === "dumbbell") w.equip = "home"; // older setting name
+  const d = { equip: "gym", pullupBar: true, level: "beginner", wgoal: "gain", sessionMin: 60, limits: [], cardio: "walk", autoKcal: true, favs: [], log: {}, sessions: [], blockStart: ymd(mondayOf(new Date())) };
+  for (const k in d) if (w[k] === undefined) w[k] = d[k];
+  return w;
 }
+function availableEquip() {
+  const w = W(), set = new Set(window.EQUIP_SETS[w.equip] || ["bodyweight"]);
+  if (w.equip !== "gym" && w.pullupBar) set.add("pullup bar");
+  return set;
+}
+const canDo = (e) => e.equip.some((q) => availableEquip().has(q)) && !e.stress.some((s) => W().limits.includes(s));
+const trainingDays = () => goals().schedule.map((s, i) => (s.train ? i : -1)).filter((i) => i >= 0);
+const repTop = (range) => +String(range).split(/[–-]/).pop();
+
+// Personalisation from your profile (age, sex, height, weight) + training settings, using the evidence in data/workouts.js
+function trainingProfile() {
+  const w = W(), p = goals().profile, age = +p.age, lvl = LEVELS[w.level] || 1;
+  const bmi = p.weight / Math.pow(p.height / 100, 2);
+  const older = age >= 65, mid = age >= 50;
+  let weeklySets = [10, 14, 18][lvl - 1];                       // ≥10 sets/muscle/week (Schoenfeld 2017)
+  if (mid) weeklySets -= 2;                                     // a bit less volume, more recovery after 50
+  if (older) weeklySets = Math.min(weeklySets, 10);
+  if (w.wgoal === "health") weeklySets = Math.min(weeklySets, 10);
+  const rir = older || lvl === 1 ? "2–3" : lvl === 2 ? "1–2" : "0–2";  // reps left in reserve
+  const reps = w.wgoal === "strength" ? { compound: "3–6", isolation: "8–12" }
+    : w.wgoal === "health" || older ? { compound: "8–12", isolation: "10–15" }
+    : w.equip === "bodyweight" ? { compound: "8–20", isolation: "12–25" }   // can’t add load → use higher reps, still effective near failure
+    : { compound: lvl === 1 ? "8–12" : "6–10", isolation: "10–15" };         // ACSM 2009; similar growth 6–30 reps (Schoenfeld 2017)
+  const rest = { compound: w.wgoal === "strength" ? 180 : 150, isolation: 75 };   // longer rest for big lifts (Schoenfeld 2016)
+  // healthy rate of gain: ~0.25–0.5% of body weight per week (Iraki 2019); faster for beginners/underweight, slower if BMI ≥ 25
+  const ratePct = bmi < 18.5 ? 0.5 : bmi >= 25 ? 0.25 : [0.5, 0.35, 0.25][lvl - 1];
+  const surplus = w.wgoal === "health" ? 0 : Math.round((ratePct / 100 * p.weight * 7700 / 7) / 50) * 50;
+  const protein = older ? 1.6 : w.wgoal === "health" ? 1.6 : 1.8;      // 1.6 plateau (Morton 2018), 1.4–2.0 (ISSN 2017), ≥1.2 older (PROT-AGE)
+  return { age, bmi, lvl, older, mid, youth: age < 18, weeklySets, rir, reps, rest, ratePct, surplus, protein, days: trainingDays().length };
+}
+
+// Fill the split's movement slots with the best exercises for you, then size sets to hit weekly volume within your session time.
+function buildProgram() {
+  const w = W(), T = trainingProfile(), td = trainingDays();
+  if (!td.length) return null;
+  const split = window.SPLITS[Math.min(td.length, 6)];
+  const used = {};
+  const pick = (pattern) => {
+    const c = XLIB.filter((e) => e.pattern === pattern && canDo(e));
+    if (!c.length) return null;
+    const score = (e) => (w.favs.includes(e.id) ? 6 : 0) - Math.abs(e.level - Math.min(T.lvl, 2)) * 2 - ((used[pattern] || []).includes(e.id) ? 3 : 0) - (T.older && e.level > 1 ? 3 : 0) - (e.unilateral && T.lvl === 1 ? 0.5 : 0);
+    const best = c.map((e) => [e, score(e)]).sort((a, b) => b[1] - a[1])[0][0];
+    (used[pattern] = used[pattern] || []).push(best.id);
+    return best;
+  };
+  const sessions = split.sessions.map((s) => {
+    const items = s.slots.map(pick).filter(Boolean).map((e) => ({ id: e.id, sets: T.older ? 2 : 3 }));
+    if (T.older) { const b = pick("balance"); if (b) items.push({ id: b.id, sets: 2, balance: true }); }
+    return { name: s.name, items };
+  });
+  const week = td.map((_, k) => sessions[k % sessions.length]);
+  const BIG = ["chest", "back", "shoulders", "quads", "glutes", "hamstrings"], SMALL = ["biceps", "triceps", "rearDelts", "calves", "core"];
+  const targetFor = (m) => (BIG.includes(m) ? T.weeklySets : Math.round(T.weeklySets * 0.6));
+  const volume = () => {
+    const v = {}; for (const m in window.MUSCLES) v[m] = 0;
+    for (const s of week) for (const it of s.items) { const e = XBY[it.id]; for (const m of e.muscles) v[m] += it.sets; for (const m of e.sec) v[m] += it.sets / 2; }
+    return v;
+  };
+  // adjust sets (2–5 per exercise) toward each muscle's target
+  for (let pass = 0; pass < 6; pass++) {
+    const v = volume();
+    for (const s of sessions) for (const it of s.items) {
+      if (it.balance) continue;
+      const e = XBY[it.id], m = e.muscles[0]; if (!m) continue;
+      if (v[m] < targetFor(m) - 1 && it.sets < 5) it.sets++;
+      else if (v[m] > targetFor(m) * 1.5 && it.sets > 2) it.sets--;
+    }
+  }
+  // fit each session into your time: trim isolation sets, then drop the last isolation exercise
+  const minutesOf = (s) => Math.round(8 + s.items.reduce((t, it) => { const e = XBY[it.id]; return t + it.sets * ((e.kind === "compound" ? T.rest.compound : T.rest.isolation) + 45) / 60; }, 0));
+  for (const s of sessions) {
+    let guard = 0;
+    while (minutesOf(s) > w.sessionMin && guard++ < 30) {
+      const iso = s.items.filter((it) => XBY[it.id].kind === "isolation" && it.sets > 2).pop();
+      if (iso) { iso.sets--; continue; }
+      const cmp = s.items.filter((it) => it.sets > 2).pop();
+      if (cmp) { cmp.sets--; continue; }
+      const dropIdx = s.items.map((it) => XBY[it.id].kind).lastIndexOf("isolation");
+      if (dropIdx >= 0 && s.items.length > 3) s.items.splice(dropIdx, 1); else break;
+    }
+    s.minutes = minutesOf(s);
+    for (const it of s.items) {
+      const e = XBY[it.id];
+      it.reps = e.unit === "seconds" ? "20–45 s" : e.kind === "compound" ? T.reps.compound : T.reps.isolation;
+      it.rest = e.kind === "compound" ? T.rest.compound : T.rest.isolation;
+    }
+  }
+  const v = volume();
+  const equipNeeded = [...new Set(sessions.flatMap((s) => s.items.flatMap((it) => XBY[it.id].equip.filter((q) => availableEquip().has(q)).slice(0, 1))))];
+  return { split, sessions, week, volume: v, targetFor, T, equipNeeded };
+}
+const sessionKcal = (minutes) => Math.round((5.0 - 1) * goals().profile.weight * minutes / 60);   // net MET ≈ 5 (Ainsworth 2011)
 function workoutForDay(i) {
   const td = trainingDays(), k = td.indexOf(i);
   if (k < 0) return null;
-  const n = Math.min(td.length, 6), prog = window.PROGRAMS[n], names = SESSION_NAMES[n];
-  const idx = n === 3 ? (k + (weekNumber() % 2)) % 2 : k % prog.days.length; // 3 days: A-B-A one week, B-A-B the next
-  const moves = prog.days[idx];
-  const minutes = 10 + moves.reduce((s, id) => { const x = setsFor(id); return s + x.sets * (EX[id].type === "compound" ? 3.5 : 2); }, 0);
-  return { name: names[idx], moves, minutes: Math.round(minutes / 5) * 5, program: prog };
+  const P = buildProgram(); if (!P) return null;
+  const s = P.week[k];
+  return { name: s.name, minutes: s.minutes, kcal: sessionKcal(s.minutes), session: s };
 }
-const exName = (id) => EX[id][state.workout.equip] || EX[id].gym;
-function nextTarget(id) {
-  const log = state.workout.log[id] || [], e = EX[id], W = state.workout, top = setsFor(id).top;
-  if (!log.length) return "First time: pick a weight you could lift for the top of the rep range with 2 reps to spare. Log it, and the app tells you what to do next time.";
-  const last = log[log.length - 1], reps = String(last.reps).split(/[\s,/]+/).map(Number).filter((x) => x > 0);
-  if (reps.length && reps.every((r) => r >= top)) {
-    if (W.equip === "bodyweight" && !+last.weight) return `You hit ${top}+ reps on every set. Next time, move to a harder version (see tips) or wear a loaded backpack.`;
-    const inc = e.lower ? (W.equip === "gym" ? 5 : 4) : W.equip === "gym" ? 2.5 : 2;
-    return `You hit the top of the range on every set. Next time: ${(+last.weight || 0) + inc} kg.`;
-  }
-  return `Next time: stay at ${+last.weight ? last.weight + " kg" : "the same difficulty"} and aim for 1 more rep on each set (last time: ${reps.join(", ") || "?"}).`;
+// WHO: 150+ min moderate cardio per week. Put brisk walks/rides on rest days; extra minutes after lifting.
+function cardioPlan() {
+  const w = W(), td = trainingDays(), opt = window.CARDIO_OPTIONS[w.cardio] || window.CARDIO_OPTIONS.walk;
+  const rest = [0, 1, 2, 3, 4, 5, 6].filter((i) => !td.includes(i));
+  const perRest = rest.length ? Math.min(45, Math.ceil(150 / rest.length / 5) * 5) : 0;
+  const days = {};
+  rest.forEach((i) => (days[i] = perRest));
+  let total = perRest * rest.length;
+  if (total < 150 && td.length) { const extra = Math.ceil((150 - total) / td.length / 5) * 5; td.forEach((i) => (days[i] = extra)); total += extra * td.length; }
+  const kcalFor = (min) => Math.round((opt.met - 1) * goals().profile.weight * min / 60);
+  return { opt, days, total, kcalFor };
+}
+// calories your training adds to a given weekday (used by Goals when auto is on)
+function exerciseKcalForDay(i) {
+  const wo = workoutForDay(i), c = cardioPlan();
+  return (wo ? wo.kcal : 0) + c.kcalFor(c.days[i] || 0);
 }
 
+// ───── favourites for exercises (same heart as recipes) ─────
+const isXFav = (id) => W().favs.includes(id);
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-xfav]"); if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  const w = W(), id = b.dataset.xfav;
+  w.favs = isXFav(id) ? w.favs.filter((x) => x !== id) : [...w.favs, id];
+  save(); b.classList.toggle("on", isXFav(id)); b.textContent = isXFav(id) ? "♥" : "♡";
+}, true);
+const xheart = (id) => `<button class="fav-btn ${isXFav(id) ? "on" : ""}" data-xfav="${id}" title="Favorite exercise">${isXFav(id) ? "♥" : "♡"}</button>`;
+
+// ───── progress helpers ─────
+const e1rm = (w, r) => (w > 0 && r > 0 ? w * (1 + Math.min(r, 12) / 30) : 0);   // Epley estimate
+function bestE1rm(id) { return Math.max(0, ...(W().log[id] || []).map((l) => Math.max(0, ...String(l.reps).split(/[\s,/]+/).map(Number).map((r) => e1rm(+l.weight, r))))); }
+function suggestWeight(id) {
+  const log = W().log[id] || [], last = log[log.length - 1];
+  if (!last) return "";
+  const e = XBY[id], top = repTop(e.kind === "compound" ? trainingProfile().reps.compound : trainingProfile().reps.isolation);
+  const reps = String(last.reps).split(/[\s,/]+/).map(Number).filter((x) => x > 0);
+  if (+last.weight && reps.length && reps.every((r) => r >= top)) return +last.weight + (e.lower ? (W().equip === "gym" ? 5 : 4) : W().equip === "gym" ? 2.5 : 2);
+  return +last.weight || "";
+}
+function nextTarget(id) {
+  const log = W().log[id] || [], e = XBY[id];
+  if (!log.length) return "First time: pick a weight you could lift for the top of the rep range with 2–3 reps to spare. Log it and the app tells you what to do next time.";
+  const sw = suggestWeight(id), last = log[log.length - 1];
+  if (sw && +sw > +last.weight) return `You hit the top of the range on every set — next time use ${sw} kg (progressive overload, ACSM 2009).`;
+  if (!+last.weight) return `Next time: aim for 1–2 more reps per set; when every set hits the top of the range, move to a harder version${e.harder ? ` (${XBY[e.harder].name})` : ""}.`;
+  return `Next time: stay at ${last.weight} kg and aim for 1 more rep on each set (last: ${last.reps}).`;
+}
+function sparkline(vals, w = 160, h = 36) {
+  if (vals.length < 2) return "";
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * (w - 4) + 2},${h - 2 - ((v - min) / span) * (h - 4)}`).join(" ");
+  return `<svg width="${w}" height="${h}" class="spark"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>`;
+}
+
+// ───── main Workouts screen with sub-sections ─────
+const WVIEWS = [["program", "📅 My program"], ["library", "📚 Exercises"], ["progress", "📈 Progress"], ["science", "🔬 Science"]];
 function renderWorkouts() {
-  const W = state.workout, G = goals(), td = trainingDays();
-  const sel = (id, val, opts) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${v === val ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  W();
+  const v = new URLSearchParams(location.hash.split("?")[1] || "").get("v") || "program";
+  $("#view").innerHTML = `<h1>Workouts</h1>
+    <div class="row subnav">${WVIEWS.map(([k, l]) => `<a class="chip click ${v === k ? "on" : ""}" href="#workouts?v=${k}">${l}</a>`).join("")}
+      <span class="spacer"></span><button class="btn primary" id="w-start">▶ Start today’s workout</button></div>
+    <div id="wbody"></div>`;
+  ({ program: renderProgram, library: renderLibrary, progress: renderProgress, science: renderScience }[v] || renderProgram)();
+  $("#w-start").onclick = () => {
+    const today = (new Date().getDay() + 6) % 7, wo = workoutForDay(today), P = buildProgram();
+    if (!P) return alert("Set your training days first (My program → Your week).");
+    startWorkoutMode(wo ? wo.session : P.week[0]);
+  };
+}
+
+function renderProgram() {
+  const w = W(), G = goals(), p = G.profile, P = buildProgram(), T = trainingProfile(), C = cardioPlan();
+  const sel = (id, val, opts) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
   const todayI = (new Date().getDay() + 6) % 7;
-  const prog = td.length ? window.PROGRAMS[Math.min(td.length, 6)] : null;
-  $("#view").innerHTML = `
-    <h1>Workouts</h1>
-    <p class="sub">Strength training to go with your food plan. Your training days and times come from the weekly schedule in <a href="#goals">Goals</a>, so meals and shakes are already timed around them.</p>
-    <div class="row" style="margin-bottom:14px">
-      <label class="field">Equipment ${sel("w-equip", W.equip, [["gym", "Gym"], ["dumbbell", "Dumbbells at home"], ["bodyweight", "No equipment (bodyweight)"]])}</label>
-      <label class="field">Experience ${sel("w-level", W.level, [["beginner", "Beginner (under ~1 year)"], ["intermediate", "Intermediate"]])}</label>
+  const block = Math.floor((new Date() - parseYmd(w.blockStart)) / (7 * 864e5)) + 1;
+  $("#wbody").innerHTML = `
+    <div class="two" style="grid-template-columns:1fr 1fr">
+      <div class="card"><h3>About you</h3>
+        <div class="row">
+          <label class="field">Sex <select data-gp="sex"><option value="male" ${p.sex === "male" ? "selected" : ""}>Male</option><option value="female" ${p.sex === "female" ? "selected" : ""}>Female</option></select></label>
+          <label class="field">Age <input type="number" data-gp="age" value="${p.age}" style="width:64px"></label>
+          <label class="field">Height (cm) <input type="number" data-gp="height" value="${p.height}" style="width:72px"></label>
+          <label class="field">Weight (kg) <input type="number" step="0.1" data-gp="weight" value="${p.weight}" style="width:72px"></label>
+        </div>
+        <div class="row">
+          <label class="field">Experience ${sel("w-level", w.level, [["beginner", "Beginner (< 6 months)"], ["intermediate", "Intermediate (6 mo – 2 yrs)"], ["advanced", "Advanced (2+ yrs)"]])}</label>
+          <label class="field">Main goal ${sel("w-goal", w.wgoal, [["gain", "Gain weight & muscle"], ["strength", "Get stronger"], ["health", "General health & fitness"]])}</label>
+        </div>
+        <div class="row">
+          <label class="field">Equipment ${sel("w-equip", w.equip, [["gym", "Gym"], ["home", "Home: dumbbells + bands"], ["bodyweight", "No equipment"]])}</label>
+          ${w.equip !== "gym" ? `<label class="row small"><input type="checkbox" id="w-bar" ${w.pullupBar ? "checked" : ""}> I have a pull-up bar</label>` : ""}
+          <label class="field">Session length ${sel("w-min", w.sessionMin, [[30, "30 min"], [45, "45 min"], [60, "60 min"], [75, "75 min"], [90, "90 min"]])}</label>
+        </div>
+        <div class="row small"><b>Go easy on:</b>${["knee", "back", "shoulder"].map((s) => `<label class="row small"><input type="checkbox" data-limit="${s}" ${w.limits.includes(s) ? "checked" : ""}> ${s}s</label>`).join("")}</div>
+        <div class="row" style="margin-top:8px"><label class="field">Cardio you like ${sel("w-cardio", w.cardio, Object.entries(window.CARDIO_OPTIONS).map(([k, o]) => [k, o.name]))}</label></div>
+        <div class="summary">
+          <div class="stat"><div class="k">BMI</div><div class="v">${T.bmi.toFixed(1)}</div><div class="small muted">${T.bmi < 18.5 ? "underweight" : T.bmi < 25 ? "healthy range" : T.bmi < 30 ? "overweight" : "obese"} (rough guide)</div></div>
+          <div class="stat"><div class="k">Sets / muscle / week</div><div class="v">${T.weeklySets}</div></div>
+          <div class="stat"><div class="k">Effort</div><div class="v">${T.rir} reps in reserve</div></div>
+          <div class="stat"><div class="k">Healthy gain rate</div><div class="v">${T.surplus ? `${(T.ratePct / 100 * p.weight).toFixed(2)} kg/wk` : "maintain"}</div></div>
+        </div>
+        ${T.youth ? `<div class="box amber small">Under 18: WHO recommends 60 minutes of activity a day. Strength training is safe and helpful with good coaching — learn the movements with light weights first, and focus on eating enough rather than a big calorie surplus.</div>` : ""}
+        ${T.older ? `<div class="box amber small">65+: your program uses fewer max-effort sets, longer recovery and adds balance work 3×/week (WHO 2020). Protein needs are higher with age (PROT-AGE).</div>` : ""}
+        <p class="small muted">See <a href="#workouts?v=science">🔬 Science</a> for the research behind every number.</p>
+      </div>
+      <div class="card"><h3>Your week</h3>
+        <p class="small muted" style="margin-top:0">Shared with Goals — meals, shakes and cooking are timed around these sessions.</p>
+        <table class="sched">${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th><td><label class="row small"><input type="checkbox" data-tday="${i}" ${s.train ? "checked" : ""}> Train</label></td>
+          <td><input type="time" data-ttime="${i}" value="${s.trainAt}" ${s.train ? "" : "disabled"}></td>
+          <td class="small muted">${s.train ? (workoutForDay(i)?.name || "") : C.days[i] ? `🚶 ${C.days[i]} min ${C.opt.name.toLowerCase()}` : "rest"}</td></tr>`).join("")}</table>
+        <label class="row small" style="margin-top:8px"><input type="checkbox" id="w-auto" ${w.autoKcal ? "checked" : ""}> Add workout & cardio calories to each day’s food target automatically</label>
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="w-apply">🔬 Apply science-based targets to Goals</button></div>
+        <p class="small muted">Sets your calorie surplus (+${T.surplus} kcal ≈ ${T.ratePct}% body weight/week), protein (${T.protein} g/kg) and daily activity level, then you can rebuild your meal week.</p>
+      </div>
     </div>
-    ${!td.length ? `<div class="box amber">You have no training days set. <button class="btn sm" id="w-default">Use Mon / Wed / Fri at 18:00</button> or pick days in <a href="#goals">Goals → Your week</a>.</div>` : `
-    <div class="box green"><b>Your program: ${prog.name}</b> (${td.length} day${td.length > 1 ? "s" : ""} a week). ${esc(prog.note)}</div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));margin-top:14px">
-    ${td.map((i) => { const wo = workoutForDay(i); return `<div class="card ${i === todayI && state.weekOffset === 0 ? "today-card" : ""}">
-      <div class="row"><b>${DAYS[i]} · ${esc(G.schedule[i].trainAt)}</b>${i === todayI ? `<span class="chip diff-2">today</span>` : ""}<span class="spacer"></span><span class="small muted">≈ ${wo.minutes} min</span></div>
-      <h3 style="margin:6px 0">${wo.name}</h3>
-      <ol class="exlist">${wo.moves.map((id) => { const s = setsFor(id), last = (W.log[id] || []).slice(-1)[0]; return `<li data-ex="${id}">
-        <b>${esc(exName(id))}</b> <span class="muted small">${s.sets} × ${s.reps}</span>
-        ${last ? `<div class="small muted">Last: ${last.weight ? last.weight + " kg × " : ""}${esc(last.reps)} (${last.date.slice(5)})</div>` : ""}</li>`; }).join("")}</ol>
-      <div class="small muted">Warm up 5–10 min first. Tap an exercise for form tips and to log it.</div></div>`; }).join("")}
-    </div>`}
-    <h2>🥤 Protein shakes & smoothies</h2>
-    <p class="small muted" style="margin-top:-6px">The meal planner adds these around training. Nutrition and cost are worked out from the ingredients.</p>
-    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-    ${SHAKES.map((s) => `<div class="card"><b>${esc(s.name)}</b>${s.native ? ` <span class="muted small">${esc(s.native)}</span>` : ""}
-      <div class="small muted">${esc(s.when)}</div>
-      <div class="row" style="margin:6px 0"><span class="chip">🔥 ${s.nut.kcal} kcal</span><span class="chip">💪 ${s.nut.p} g protein</span><span class="chip">💵 ${fmtMoney(recipeCost(s))}</span></div>
-      <ul class="small" style="padding-left:18px;margin:6px 0">${s.ing.map((i) => `<li>${i.q != null ? fmtQty(i.q, i.u) + " " + i.u + " " : ""}${esc(i.n)}</li>`).join("")}</ul>
-      <div class="small">${esc(s.how)}</div><div class="small muted" style="margin-top:4px">💡 ${esc(s.tip)}</div></div>`).join("")}
+    ${!P ? `<div class="empty" style="margin-top:16px">Tick at least one training day above to get your program. 2–4 days is ideal for most people.</div>` : `
+    <div class="box green" style="margin-top:16px"><b>${P.split.name}</b> · ${P.week.length} session${P.week.length > 1 ? "s" : ""}/week · each muscle about ${P.week.length >= 2 ? "2×" : "1×"} a week · training block week ${block}${block >= 6 ? " — time for a lighter deload week (half the sets)" : ` (deload around week ${7})`}
+      <button class="btn sm" id="w-newblock" style="margin-left:8px">Start new block</button></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(330px,1fr));margin-top:14px">
+      ${trainingDays().map((i, k) => { const s = P.week[k]; return `<div class="card ${i === todayI ? "today-card" : ""}">
+        <div class="row"><b>${DAYS[i]} · ${esc(G.schedule[i].trainAt)}</b>${i === todayI ? `<span class="chip diff-2">today</span>` : ""}<span class="spacer"></span><span class="small muted">≈ ${s.minutes} min · ${sessionKcal(s.minutes)} kcal</span></div>
+        <h3 style="margin:6px 0">${s.name}</h3>
+        <ol class="exlist">${s.items.map((it) => { const e = XBY[it.id], sw = suggestWeight(it.id); return `<li data-ex="${it.id}"><b>${esc(e.name)}</b> <span class="muted small">${it.sets} × ${it.reps} · rest ${it.rest >= 120 ? Math.round(it.rest / 30) / 2 + " min" : it.rest + " s"}${sw ? ` · ${sw} kg` : ""}</span></li>`; }).join("")}</ol>
+        <button class="btn sm primary" data-startk="${k}">▶ Start this workout</button></div>`; }).join("")}
     </div>
-    <h2>📋 Training basics</h2>
-    <ul class="small">${(window.TRAINING_BASICS || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`;
-  $("#w-equip").onchange = (e) => { W.equip = e.target.value; save(); renderWorkouts(); };
-  $("#w-level").onchange = (e) => { W.level = e.target.value; save(); renderWorkouts(); };
-  if ($("#w-default")) $("#w-default").onclick = () => { G.schedule.forEach((s, i) => { s.train = [0, 2, 4].includes(i); s.trainAt = "18:00"; }); save(); renderWorkouts(); };
+    <h2>📊 Weekly volume check</h2>
+    <p class="small muted" style="margin-top:-6px">Hard sets per muscle per week (secondary muscles count as ½). Target for you: ${T.weeklySets} for big muscles.</p>
+    <div class="card">${Object.entries(window.MUSCLES).map(([m, label]) => { const val = Math.round(P.volume[m] * 2) / 2, t = P.targetFor(m); return `<div class="vrow"><span>${label}</span><div class="bar"><div style="width:${Math.min(100, (val / (t * 1.5)) * 100)}%;background:${val >= t * 0.8 ? "var(--green)" : "var(--amber)"}"></div></div><span class="small"><b>${val}</b> / ${t}</span></div>`; }).join("")}</div>
+    <h2>🚶 Cardio & daily movement</h2>
+    <div class="card small">${C.total} min/week of ${C.opt.name.toLowerCase()} (WHO: 150–300). ${esc(C.opt.note)}
+      <div class="row" style="margin-top:6px">${Object.entries(C.days).map(([i, m]) => `<span class="chip">${DAYS[i]}: ${m} min</span>`).join("")}</div></div>
+    <h2>🧰 Equipment for this program</h2>
+    <div class="card small">${P.equipNeeded.map((q) => `<span class="chip">${esc(q)}</span>`).join("")}
+      ${w.equip !== "gym" ? `<div class="muted" style="margin-top:6px">Building a home setup? ${["dumbbell", "band", "pullup bar", "bench"].map((q) => esc(window.EQUIP_COST[q] || q)).join(" · ")}. Prices are rough.</div>` : ""}</div>`}`;
+  // bindings
+  const re = () => { save(); renderWorkouts(); };
+  $$("[data-gp]").forEach((el) => el.onchange = () => { p[el.dataset.gp] = el.type === "number" ? +el.value : el.value; re(); });
+  $("#w-level").onchange = (e) => { w.level = e.target.value; re(); };
+  $("#w-goal").onchange = (e) => { w.wgoal = e.target.value; re(); };
+  $("#w-equip").onchange = (e) => { w.equip = e.target.value; re(); };
+  if ($("#w-bar")) $("#w-bar").onchange = (e) => { w.pullupBar = e.target.checked; re(); };
+  $("#w-min").onchange = (e) => { w.sessionMin = +e.target.value; re(); };
+  $("#w-cardio").onchange = (e) => { w.cardio = e.target.value; re(); };
+  $("#w-auto").onchange = (e) => { w.autoKcal = e.target.checked; re(); };
+  $$("[data-limit]").forEach((c) => c.onchange = () => { w.limits = c.checked ? [...w.limits, c.dataset.limit] : w.limits.filter((x) => x !== c.dataset.limit); re(); });
+  $$("[data-tday]").forEach((c) => c.onchange = () => { G.schedule[+c.dataset.tday].train = c.checked; re(); });
+  $$("[data-ttime]").forEach((c) => c.onchange = () => { G.schedule[+c.dataset.ttime].trainAt = c.value; re(); });
+  $("#w-apply").onclick = () => {
+    p.goal = T.surplus; p.custom = 0; p.proteinPerKg = T.protein; p.activity = w.autoKcal ? 1.3 : (T.days >= 5 ? 1.725 : T.days >= 3 ? 1.55 : 1.375);
+    save(); alert(`Goals updated: +${T.surplus} kcal surplus, ${T.protein} g/kg protein, daily-life activity ${p.activity}${w.autoKcal ? " (workouts added per day)" : ""}. Open Goals and press “Build my week” to refresh your meals.`); re();
+  };
+  if ($("#w-newblock")) $("#w-newblock").onclick = () => { w.blockStart = ymd(mondayOf(new Date())); re(); };
   $$("[data-ex]").forEach((li) => li.onclick = () => openExercise(li.dataset.ex));
+  $$("[data-startk]").forEach((b) => b.onclick = () => startWorkoutMode(P.week[+b.dataset.startk]));
+}
+
+let xFilter = { q: "", muscle: "", pattern: "", mine: true, level: 0 };
+function renderLibrary() {
+  const f = xFilter, q = f.q.toLowerCase(), inProg = new Set((buildProgram()?.sessions || []).flatMap((s) => s.items.map((i) => i.id)));
+  const list = XLIB.filter((e) => (!q || `${e.name} ${e.muscles.join(" ")} ${e.pattern}`.toLowerCase().includes(q))
+    && (!f.muscle || e.muscles.includes(f.muscle) || e.sec.includes(f.muscle)) && (!f.mine || canDo(e)) && (!+f.level || e.level === +f.level) && (!f.pattern || (f.pattern === "fav" ? isXFav(e.id) : e.pattern === f.pattern)))
+    .sort((a, b) => isXFav(b.id) - isXFav(a.id) || a.level - b.level || a.name.localeCompare(b.name));
+  $("#wbody").innerHTML = `
+    <div class="filters"><input type="search" id="xf-q" placeholder="Search exercises or muscles…" value="${esc(f.q)}">
+      <select id="xf-muscle"><option value="">All muscles</option>${Object.entries(window.MUSCLES).map(([k, l]) => `<option value="${k}" ${f.muscle === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="xf-level"><option value="0">Any level</option>${[1, 2, 3].map((d) => `<option value="${d}" ${+f.level === d ? "selected" : ""}>${DIFF[d]}</option>`).join("")}</select>
+      <label class="row small"><input type="checkbox" id="xf-mine" ${f.mine ? "checked" : ""}> Only what I can do (equipment & joints)</label></div>
+    <div class="row" style="margin-bottom:14px">${[["", "All"], ["fav", "♥ favorites"], ["squat", "Squat"], ["hinge", "Hinge"], ["hpush", "Push (horizontal)"], ["vpush", "Push (overhead)"], ["hpull", "Row"], ["vpull", "Pull-down / up"], ["lunge", "Lunge"], ["core", "Core"], ["balance", "Balance"]].map(([k, l]) => `<span class="chip click ${f.pattern === k ? "on" : ""}" data-xp="${k}">${l}</span>`).join("")}</div>
+    <div class="grid">${list.map((e) => `<div class="card rcard" data-ex="${e.id}">${xheart(e.id)}
+      <div class="name">${esc(e.name)}</div>
+      <div class="native">${e.muscles.map((m) => window.MUSCLES[m]).join(", ") || "Balance"}</div>
+      <div><span class="chip diff-${e.level}">${DIFF[e.level]}</span><span class="chip">${e.kind}</span>${inProg.has(e.id) ? `<span class="chip diff-1">in my program</span>` : ""}</div>
+      <div class="meta"><span>🧰 ${e.equip.join(" / ")}</span>${(W().log[e.id] || []).length ? `<span>📈 ${(W().log[e.id] || []).length} logs</span>` : ""}</div></div>`).join("") || `<div class="empty">No exercises match.</div>`}</div>`;
+  const bind = (id, k, isCheck) => $(id).addEventListener(isCheck ? "change" : "input", (e) => { f[k] = isCheck ? e.target.checked : e.target.value; renderLibrary(); if (id === "#xf-q") { const n = $("#xf-q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+  bind("#xf-q", "q"); bind("#xf-muscle", "muscle"); bind("#xf-level", "level"); bind("#xf-mine", "mine", true);
+  $$("[data-xp]").forEach((c) => c.onclick = () => { f.pattern = c.dataset.xp; renderLibrary(); });
+  $$("[data-ex]").forEach((c) => c.onclick = () => openExercise(c.dataset.ex));
 }
 
 function openExercise(id) {
-  const e = EX[id], W = state.workout, s = setsFor(id), log = W.log[id] || [];
-  const q = encodeURIComponent(`${exName(id)} proper form`);
+  const e = XBY[id], w = W(), log = w.log[id] || [], T = trainingProfile();
+  const reps = e.unit === "seconds" ? "20–45 s" : e.kind === "compound" ? T.reps.compound : T.reps.isolation;
+  const q = encodeURIComponent(`${e.name} proper form`);
+  const trend = log.map((l) => Math.max(0, ...String(l.reps).split(/[\s,/]+/).map(Number).map((r) => e1rm(+l.weight, r)))).filter((x) => x > 0);
   openModal(`
-    <h2 style="margin-top:0">${esc(exName(id))}</h2>
-    <div class="muted">${esc(e.muscles)} · ${s.sets} sets × ${s.reps} · rest ${e.type === "compound" ? "2–3 min" : "60–90 s"}</div>
-    <div class="box"><b>How to do it</b><ul class="small">${e.cues.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
-      <a class="small" href="https://www.youtube.com/results?search_query=${q}" target="_blank" rel="noopener">▶ Watch form videos (YouTube search) ↗</a></div>
-    <div class="small muted" style="margin-top:8px">Other versions: gym: ${esc(e.gym)} · dumbbells: ${esc(e.dumbbell)} · bodyweight: ${esc(e.bodyweight)}</div>
+    <div class="row"><h1 style="margin:0">${esc(e.name)}</h1><span class="spacer"></span><span style="position:relative;width:36px;height:36px">${xheart(id)}</span></div>
+    <div style="margin:6px 0">${e.muscles.map((m) => `<span class="chip skill-chip">${window.MUSCLES[m]}</span>`).join("")}${e.sec.map((m) => `<span class="chip">${window.MUSCLES[m]} (helper)</span>`).join("")}<span class="chip diff-${e.level}">${DIFF[e.level]}</span></div>
+    <div class="stats">
+      <div class="stat"><div class="k">For you</div><div class="v">${reps}</div><div class="small muted">${T.rir} reps in reserve</div></div>
+      <div class="stat"><div class="k">Rest</div><div class="v">${e.kind === "compound" ? `${T.rest.compound / 60} min` : `${T.rest.isolation} s`}</div></div>
+      <div class="stat"><div class="k">Equipment</div><div class="v">${esc(e.equip.join(" / "))}</div></div>
+      ${trend.length ? `<div class="stat"><div class="k">Est. 1-rep max</div><div class="v">${Math.round(trend[trend.length - 1])} kg</div>${sparkline(trend, 110, 28)}</div>` : ""}
+    </div>
+    ${e.stress.length ? `<div class="box amber small">Loads your ${e.stress.join(" & ")}. If it hurts (sharp pain, not effort), switch to ${e.easier ? `<a href="#" data-xopen="${e.easier}">${esc(XBY[e.easier].name)}</a>` : "an easier version"}.</div>` : ""}
+    <div class="two">
+      <div><h2>How to do it</h2><ol class="steps">${e.how.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></div>
+      <div><h2>Cues</h2><ul>${e.cues.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
+        <h2>Common mistakes</h2><ul>${e.mistakes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
+        <div class="row">${e.easier ? `<a class="btn sm" href="#" data-xopen="${e.easier}">⬇ Easier: ${esc(XBY[e.easier].name)}</a>` : ""}${e.harder ? `<a class="btn sm" href="#" data-xopen="${e.harder}">⬆ Harder: ${esc(XBY[e.harder].name)}</a>` : ""}</div>
+        <p><a href="https://www.youtube.com/results?search_query=${q}" target="_blank" rel="noopener">▶ Watch form videos (YouTube search) ↗</a></p></div>
+    </div>
     <div class="box green"><b>🎯 ${esc(nextTarget(id))}</b></div>
-    <h3 style="margin-top:16px">Log a session</h3>
+    <h2>Log it</h2>
     <div class="row"><input type="date" id="ex-date" value="${ymd(new Date())}">
-      <label class="small">Weight (kg) <input type="number" step="0.5" id="ex-w" style="width:80px" placeholder="${W.equip === "bodyweight" ? "0" : ""}" value="${log.length ? log[log.length - 1].weight || "" : ""}"></label>
-      <label class="small">Reps per set <input id="ex-reps" placeholder="e.g. 10, 9, 8" style="width:120px"></label>
+      <label class="small">Weight (kg) <input type="number" step="0.5" id="ex-w" style="width:80px" value="${suggestWeight(id)}"></label>
+      <label class="small">${e.unit === "seconds" ? "Seconds" : "Reps"} per set <input id="ex-reps" placeholder="e.g. 10, 9, 8" style="width:120px"></label>
       <button class="btn primary" id="ex-save">Save</button></div>
-    ${log.length ? `<h3 style="margin-top:16px">History</h3><table class="sched">${log.slice(-8).reverse().map((l, k) => `<tr><td>${l.date}</td><td>${l.weight ? l.weight + " kg" : "bodyweight"}</td><td>${esc(l.reps)}</td><td><button class="btn sm ghost" data-del-log="${log.length - 1 - k}">🗑</button></td></tr>`).join("")}</table>` : ""}`, true);
+    ${log.length ? `<table class="sched" style="margin-top:10px">${log.slice(-8).reverse().map((l, k) => `<tr><td>${l.date}</td><td>${+l.weight ? l.weight + " kg" : "bodyweight"}</td><td>${esc(l.reps)}</td><td><button class="btn sm ghost" data-del-log="${log.length - 1 - k}">🗑</button></td></tr>`).join("")}</table>` : ""}`);
   $("#ex-save").onclick = () => {
-    const reps = $("#ex-reps").value.trim(); if (!reps) return alert("Enter the reps you did for each set, e.g. 10, 9, 8");
-    (W.log[id] = W.log[id] || []).push({ date: $("#ex-date").value, weight: +$("#ex-w").value || 0, reps });
-    W.log[id].sort((x, y) => x.date.localeCompare(y.date));
-    save(); openExercise(id); if (location.hash === "#workouts") renderWorkouts();
+    const reps = $("#ex-reps").value.trim(); if (!reps) return alert("Enter what you did for each set, e.g. 10, 9, 8");
+    (w.log[id] = w.log[id] || []).push({ date: $("#ex-date").value, weight: +$("#ex-w").value || 0, reps });
+    w.log[id].sort((a, b) => a.date.localeCompare(b.date)); save(); openExercise(id);
   };
-  $$("[data-del-log]").forEach((b) => b.onclick = () => { W.log[id].splice(+b.dataset.delLog, 1); save(); openExercise(id); });
+  $$("[data-del-log]").forEach((b) => b.onclick = () => { w.log[id].splice(+b.dataset.delLog, 1); save(); openExercise(id); });
+  $$("[data-xopen]").forEach((a) => a.onclick = (ev) => { ev.preventDefault(); openExercise(a.dataset.xopen); });
+}
+
+// ───── Workout mode (the training "cook mode"): set-by-set with auto rest timer ─────
+let WM = null;
+function startWorkoutMode(session) {
+  const steps = [{ type: "warmup", min: 8 }];
+  for (const it of session.items) for (let k = 1; k <= it.sets; k++) steps.push({ type: "set", it, k });
+  WM = { session, steps, i: 0, done: [], started: Date.now(), restEnd: 0, timer: null };
+  if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request("screen").then((x) => (wakeLock = x)).catch(() => {});
+  drawWM();
+}
+function drawWM() {
+  const el = $("#cookmode"); el.classList.remove("hidden");
+  clearInterval(WM.timer);
+  const s = WM.steps[WM.i], prog = `<div class="progress"><div style="width:${(WM.i / WM.steps.length) * 100}%"></div></div>`;
+  const top = `<div class="top"><b>🏋️ ${esc(WM.session.name)}</b><span class="spacer"></span><span class="muted">${fmtMin((Date.now() - WM.started) / 60000)}</span><button class="btn" id="wm-exit">✕ End</button></div>`;
+  if (WM.restEnd > Date.now()) {
+    const next = WM.steps[WM.i];
+    el.innerHTML = `${top}<div class="stepbig" style="text-align:center">${prog}
+      <div class="stepnum" style="margin-top:24px">REST</div><div class="resttime" id="wm-rest"></div>
+      <div class="muted">Next: ${next ? esc(next.type === "set" ? `${XBY[next.it.id].name} — set ${next.k}/${next.it.sets}` : "Done!") : "Finish"}</div>
+      <div class="row" style="justify-content:center;margin-top:24px"><button class="btn" id="wm-plus">+30 s</button><button class="btn primary" id="wm-skip">Skip rest →</button></div></div>`;
+    const tick = () => { const left = Math.max(0, Math.round((WM.restEnd - Date.now()) / 1000)); const r = $("#wm-rest"); if (r) r.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`; if (!left) { beep(); WM.restEnd = 0; drawWM(); } };
+    tick(); WM.timer = setInterval(tick, 500);
+    $("#wm-skip").onclick = () => { WM.restEnd = 0; drawWM(); };
+    $("#wm-plus").onclick = () => { WM.restEnd += 30000; };
+  } else if (!s) {
+    finishWorkout(); return;
+  } else if (s.type === "warmup") {
+    el.innerHTML = `${top}<div class="stepbig">${prog}<div class="stepnum" style="margin-top:20px">WARM-UP · ${s.min} MIN</div>
+      <div class="steptext">5 minutes of easy cardio (brisk walk, bike, skipping), then 1–2 light sets of your first exercise: ${esc(XBY[WM.session.items[0].id].name)}.</div>
+      <div class="row"><button class="btn" id="wm-timer">⏲ ${s.min}-min timer</button><span class="spacer"></span><button class="btn primary" id="wm-next">Start lifting →</button></div></div>`;
+    $("#wm-timer").onclick = () => startTimer("Warm-up", s.min);
+    $("#wm-next").onclick = () => { WM.i++; drawWM(); };
+  } else {
+    const e = XBY[s.it.id], prev = [...WM.done].reverse().find((d) => d.ex === e.id), sw = prev ? prev.w : suggestWeight(e.id);
+    el.innerHTML = `${top}<div class="stepbig">${prog}
+      <div class="stepnum" style="margin-top:20px">SET ${s.k} OF ${s.it.sets} · target ${esc(s.it.reps)} · ${esc(trainingProfile().rir)} reps in reserve</div>
+      <div class="steptext">${esc(e.name)}</div>
+      <div class="muted" style="color:#c9b8ae">${esc(e.cues.join(" · "))}</div>
+      <div class="row wm-inputs" style="margin-top:22px">
+        <label>Weight (kg)<input type="number" step="0.5" id="wm-w" value="${sw}" placeholder="${e.equip.includes("bodyweight") ? "0" : ""}"></label>
+        <label>${e.unit === "seconds" ? "Seconds" : "Reps done"}<input type="number" id="wm-r" value="${repTop(s.it.reps) || ""}"></label>
+      </div>
+      <div class="row" style="margin-top:22px"><button class="btn" id="wm-back" ${WM.i <= 1 ? "disabled" : ""}>← Back</button><button class="btn" id="wm-how">How to</button><span class="spacer"></span><button class="btn primary" id="wm-done">✓ Set done</button></div>
+      <div id="wm-howbox" class="ingpanel" style="display:none;margin-top:14px">${e.how.map((h, k) => `${k + 1}. ${esc(h)}`).join("<br>")}</div></div>`;
+    $("#wm-how").onclick = () => { const b = $("#wm-howbox"); b.style.display = b.style.display === "none" ? "block" : "none"; };
+    $("#wm-back").onclick = () => { WM.i--; WM.done.pop(); drawWM(); };
+    $("#wm-done").onclick = () => {
+      WM.done.push({ ex: e.id, w: +$("#wm-w").value || 0, r: +$("#wm-r").value || 0 });
+      WM.i++;
+      const next = WM.steps[WM.i];
+      if (next) WM.restEnd = Date.now() + s.it.rest * 1000;
+      drawWM();
+    };
+  }
+  $("#wm-exit").onclick = () => { if (!WM.done.length || confirm("End workout? Sets you did will be saved.")) finishWorkout(true); };
+}
+function finishWorkout(early) {
+  clearInterval(WM.timer);
+  const w = W(), date = ymd(new Date()), minutes = Math.round((Date.now() - WM.started) / 60000);
+  const byEx = {};
+  for (const d of WM.done) (byEx[d.ex] = byEx[d.ex] || []).push(d);
+  const prs = [];
+  for (const [ex, sets] of Object.entries(byEx)) {
+    const before = bestE1rm(ex), top = Math.max(...sets.map((x) => x.w));
+    (w.log[ex] = w.log[ex] || []).push({ date, weight: top, reps: sets.map((x) => x.r).join(", ") });
+    const after = bestE1rm(ex); if (after > before && before > 0) prs.push(`${XBY[ex].name}: ~${Math.round(after)} kg est. 1RM`);
+  }
+  const volume = WM.done.reduce((s, d) => s + d.w * d.r, 0);
+  if (WM.done.length) w.sessions.push({ id: uid(), date, name: WM.session.name, minutes, sets: WM.done.length, volume, prs });
+  save();
+  const el = $("#cookmode");
+  el.innerHTML = `<div class="stepbig" style="text-align:center"><div class="stepnum">${early ? "WORKOUT ENDED" : "WORKOUT COMPLETE"} 💪</div>
+    <div class="steptext">${WM.done.length} sets · ${fmtMin(Math.max(1, minutes))}${volume ? ` · ${Math.round(volume).toLocaleString()} kg lifted` : " · bodyweight"}</div>
+    ${prs.length ? `<div style="color:#f0a58f">🏆 New personal records: ${prs.map(esc).join(" · ")}</div>` : ""}
+    <p class="muted" style="color:#c9b8ae">Now: eat a protein-rich meal or shake within a couple of hours, and sleep 7–9 h tonight.</p>
+    <div class="row" style="justify-content:center"><button class="btn primary" id="wm-close">Done</button></div></div>`;
+  $("#wm-close").onclick = () => { el.classList.add("hidden"); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } WM = null; location.hash = "#workouts?v=progress"; route(); };
+}
+
+function renderProgress() {
+  const w = W(), S = [...w.sessions].sort((a, b) => b.date.localeCompare(a.date));
+  const weekKey = (d) => ymd(mondayOf(parseYmd(d)));
+  const weeks = {}; for (const s of w.sessions) weeks[weekKey(s.date)] = (weeks[weekKey(s.date)] || 0) + 1;
+  const last8 = Array.from({ length: 8 }, (_, k) => ymd(addDays(mondayOf(new Date()), -7 * (7 - k))));
+  let streak = 0; for (let k = 7; k >= 0; k--) { if (weeks[last8[k]]) streak++; else if (k < 7) break; }
+  const planned = trainingDays().length, thisWeek = weeks[last8[7]] || 0;
+  const maxW = Math.max(1, ...last8.map((k) => weeks[k] || 0), planned);
+  const exs = Object.keys(w.log).filter((id) => XBY[id] && w.log[id].length);
+  const badges = [["🥇 First workout", S.length >= 1], ["🔟 10 workouts", S.length >= 10], ["🏅 25 workouts", S.length >= 25], ["💯 100 workouts", S.length >= 100],
+    ["🔥 4-week streak", streak >= 4], ["🏆 First PR", S.some((s) => s.prs?.length)], ["✅ WHO strength week (2+ sessions)", Object.values(weeks).some((n) => n >= 2)], ["📚 Tried 15 exercises", exs.length >= 15]];
+  $("#wbody").innerHTML = `
+    <div class="summary">
+      <div class="stat"><div class="k">This week</div><div class="v">${thisWeek} / ${planned || "–"} sessions</div></div>
+      <div class="stat"><div class="k">Streak</div><div class="v">${streak} week${streak === 1 ? "" : "s"}</div></div>
+      <div class="stat"><div class="k">Total workouts</div><div class="v">${S.length}</div></div>
+      <div class="stat"><div class="k">Lifted (all time)</div><div class="v">${Math.round(S.reduce((t, s) => t + (s.volume || 0), 0)).toLocaleString()} kg</div></div>
+    </div>
+    <h2>Sessions per week</h2>
+    <div class="card weekbars">${last8.map((k) => `<div class="wb"><div class="wbbar" style="height:${((weeks[k] || 0) / maxW) * 100}%"></div><span>${k.slice(5)}</span></div>`).join("")}</div>
+    <h2>🏅 Badges</h2>
+    <div class="stamps">${badges.map(([l, on]) => `<div class="stamp ${on ? "on" : ""}"><div>${l}</div></div>`).join("")}</div>
+    <h2>📈 Strength trends</h2>
+    ${exs.length ? `<table class="sched">${exs.map((id) => { const tr = w.log[id].map((l) => Math.max(0, ...String(l.reps).split(/[\s,/]+/).map(Number).map((r) => e1rm(+l.weight, r)))).filter((x) => x > 0); const last = w.log[id][w.log[id].length - 1];
+      return `<tr data-ex="${id}" style="cursor:pointer"><td><b>${esc(XBY[id].name)}</b></td><td>${tr.length ? `${Math.round(Math.max(...tr))} kg best est. 1RM` : "bodyweight"}</td><td>${sparkline(tr)}</td><td class="muted small">last ${last.date}: ${+last.weight ? last.weight + " kg × " : ""}${esc(last.reps)}</td></tr>`; }).join("")}</table>`
+      : `<p class="muted">No lifts logged yet. Press “Start today’s workout” — every set you finish is saved here.</p>`}
+    <h2>Workout log</h2>
+    ${S.length ? S.slice(0, 30).map((s) => `<div class="card" style="margin-bottom:8px"><div class="row"><b>${esc(s.name)}</b><span class="muted small">${s.date} · ${fmtMin(s.minutes)} · ${s.sets} sets · ${Math.round(s.volume).toLocaleString()} kg</span><span class="spacer"></span><button class="btn sm ghost" data-del-s="${s.id}">🗑</button></div>${s.prs?.length ? `<div class="small">🏆 ${s.prs.map(esc).join(" · ")}</div>` : ""}</div>`).join("") : `<p class="muted">Nothing yet.</p>`}`;
+  $$("[data-ex]").forEach((r) => r.onclick = () => openExercise(r.dataset.ex));
+  $$("[data-del-s]").forEach((b) => b.onclick = () => { if (confirm("Delete this workout from the log?")) { w.sessions = w.sessions.filter((s) => s.id !== b.dataset.delS); save(); renderProgress(); } });
+}
+
+function renderScience() {
+  const T = trainingProfile(), p = goals().profile, C = calcTargets(), w = W();
+  const E = Object.fromEntries((window.TRAINING_EVIDENCE || []).map((e) => [e.key, e]));
+  const link = (k) => { const e = E[k]; return e ? `<a href="${e.url || `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(e.q)}`}" target="_blank" rel="noopener">${esc(e.cite.split(" (")[0])} ${e.cite.match(/\((\d{4})\)/)?.[1] || ""} ↗</a>` : ""; };
+  const rows = [
+    ["Maintenance calories", `${C.tdee} kcal/day`, `Your resting energy from age, sex, height and weight, × your daily activity.`, ["mifflin"]],
+    ["Calorie surplus to gain", T.surplus ? `+${T.surplus} kcal/day → ≈ ${(T.ratePct / 100 * p.weight).toFixed(2)} kg/week` : "none (maintain)", `Slow gain (${T.ratePct}% of body weight/week) builds muscle with less fat. ${T.bmi < 18.5 ? "Your BMI is under 18.5, so gaining is also a health win." : T.bmi >= 25 ? "Your BMI is 25+, so a smaller surplus is used." : ""}`, ["surplus"]],
+    ["Protein", `${T.protein} g/kg → ${Math.round(T.protein * p.weight)} g/day, in 4 meals of ~${Math.round(T.protein * p.weight / 4)} g`, `Muscle-gain benefits level off around 1.6 g/kg; spread over the day every 3–4 h.${T.older ? " Older adults need more." : ""}`, ["protein", "issn", ...(T.older ? ["older"] : [])]],
+    ["Training days", `${T.days || "none set"} per week, each muscle ~2×/week`, `Twice a week per muscle beats once a week. WHO: strength training on 2+ days.`, ["frequency", "who"]],
+    ["Weekly sets per muscle", `${T.weeklySets} hard sets`, `More weekly sets → more growth, with 10+ clearly better than a few. ${T.mid ? "Slightly fewer after 50 for recovery." : ""}`, ["volume"]],
+    ["Reps & effort", `${T.reps.compound} reps (big lifts), ${T.reps.isolation} (small), ${T.rir} reps in reserve`, `Growth is similar from about 6 to 30 reps if sets are hard; heavier sets build more strength. Stopping 1–3 reps short of failure keeps form safe.`, ["load", "progression"]],
+    ["Rest between sets", `${T.rest.compound / 60} min (big lifts), ${T.rest.isolation} s (small)`, `Longer rest on big lifts lets you lift more, which built more muscle and strength.`, ["rest"]],
+    ["Progression", `Add weight when every set hits the top of the rep range`, `Increase load about 2–10% when you exceed the target reps.`, ["progression"]],
+    ["Cardio", `${cardioPlan().total} min/week of ${cardioPlan().opt.name.toLowerCase()}`, `Healthy heart & longevity: 150–300 min/week. Walking or cycling barely interferes with muscle gain; long running does more.`, ["who", "concurrent"]],
+    ["Calories burned training", `≈ ${sessionKcal(w.sessionMin)} kcal per ${w.sessionMin}-min session`, `Estimated from MET values; ${w.autoKcal ? "added to your food target on those days." : "turn on auto-add in My program to eat them back."}`, ["met"]],
+    ...(T.older ? [["Balance", "2 balance exercises in each session", "Adults 65+ should add balance and strength work 3+ days a week to prevent falls.", ["who"]]] : []),
+    ["Sleep", "7–9 hours a night", "Recovery, hormones and appetite all depend on it.", ["sleep"]],
+  ];
+  $("#wbody").innerHTML = `
+    <p class="sub">Every number in your program and food targets, for you (${p.age} y, ${p.sex}, ${p.height} cm, ${p.weight} kg, ${w.level}), and the research behind it.</p>
+    <table class="sci">${rows.map(([what, yours, why, keys]) => `<tr><td><b>${what}</b></td><td class="yours">${esc(yours)}</td><td>${esc(why)}<div class="small">${keys.map(link).join(" · ")}</div></td></tr>`).join("")}</table>
+    <h2>Sources</h2>
+    <ol class="small">${(window.TRAINING_EVIDENCE || []).map((e) => `<li>${esc(e.cite)} — <i>${esc(e.finding)}</i> <a href="${e.url || `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(e.q)}`}" target="_blank" rel="noopener">${e.url ? "WHO ↗" : "PubMed ↗"}</a></li>`).join("")}</ol>
+    <div class="box amber small">This is general, evidence-based guidance — not medical advice. Formulas give estimates; your weekly weigh-ins and logs are the real feedback. If you have a medical condition, an injury, are pregnant, or are under 18 or over 65 and new to exercise, check with a doctor or qualified coach first.</div>`;
 }
 
 // ───────────── BACKUP / RESTORE ─────────────

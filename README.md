@@ -28,7 +28,15 @@ The **Ingredients** tab covers 128 key ingredients. Each one has its history, ta
 ## Goals, budget & workouts
 - **Goals:** set your body stats and goal (maintain or gain) for a daily calorie and protein target, then your week (time to cook, wake time, training days, meals at home, packed or out) and an optional weekly food budget. **Build my week** plans batch cooks on free days, quick cooks on busy ones, and portion sizes to hit your target. It adds breakfasts, snacks and protein shakes timed around training, night-before prep, and a daily water, fruit & veg and sleep checklist. On a budget it picks cheaper dishes until the plan fits. A weekly weigh-in tells you whether to adjust calories.
 - **Calories & cost:** every recipe shows estimated calories, protein, carbs and fat per serving (±15%), plus cost per serving. Set your currency, local price level and your own prices in **Shop → Prices & budget**, and the grocery list shows a total against your budget.
-- **Workouts:** a strength program built from the training days in Goals (full body, upper/lower or push/pull/legs) for the gym, dumbbells or bodyweight. Each exercise has form tips and a progress log that tells you what weight to use next time. The tab also has 6 protein shakes and smoothies (with and without protein powder).
+- **Workouts:** built to mirror the cooking side.
+  - **Exercise library:** 52 exercises, each with how-to steps, cues, mistakes and easier/harder versions.
+  - **My program:** made for your age, sex, height, weight, experience, goal, equipment, injuries and session length, using your training days from Goals.
+  - **Workout mode:** guides each set with targets, suggested weights and an automatic rest timer.
+  - **Weekly volume check, cardio plan (WHO 150 min) and equipment list.**
+  - **Progress:** a log, personal records, estimated 1-rep-max trends and badges.
+  - **Science:** every number with its research source (WHO, ACSM, Schoenfeld meta-analyses, Morton 2018, ISSN, and others).
+  - **Goals sync:** "Apply science-based targets" sets your surplus and protein in Goals, and each day's food target adds that day's workout and cardio calories.
+  - **Shakes:** 6 protein shakes, also used by the meal planner around training.
 - These are estimates, not medical or dietary advice. If you have a health condition, check with a professional.
 
 ## Files
