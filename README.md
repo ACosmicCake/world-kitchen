@@ -1,5 +1,7 @@
 # 🌏 World Kitchen
 
+**Live app: https://acosmiccake.github.io/world-kitchen/**
+
 A cookbook, meal planner and cooking coach for people who cook alone, with traditional recipes from 16 countries. It works offline and can be installed as an app.
 
 ## Run it
@@ -10,7 +12,7 @@ A cookbook, meal planner and cooking coach for people who cook alone, with tradi
 
 ## On your phone
 Phones only allow offline/installable web apps from **https** addresses. To put it on your phone:
-1. Host this folder on a free static host, for example GitHub Pages, Netlify Drop or Cloudflare Pages. You upload the folder as-is, with no build step.
+1. It is already hosted at https://acosmiccake.github.io/world-kitchen/ (GitHub Pages, from the `main` branch). Every `git push` updates it within a minute or two.
 2. Open the https link on your phone. On iPhone, tap Share → **Add to Home Screen**. On Android, tap ⋮ → **Install app**.
 3. Move your data across: on the computer go to **Journal → Download backup**, then on the phone go to **Journal → Restore from backup**.
 
