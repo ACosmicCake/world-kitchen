@@ -25,10 +25,18 @@ In the **Pantry** tab you tap what you have at home, or use a starter kit (Basic
 ## Ingredient guide
 The **Ingredients** tab covers 128 key ingredients. Each one has its history, taste, how to use it, buying and storing tips, substitutes, a photo, a short Wikipedia summary, and the recipes that use it. Tap an underlined ingredient inside any recipe to open it. Photos and summaries load from Wikipedia and Wikimedia Commons with credit (CC BY-SA), and they are saved for offline use after the first view.
 
+## Goals, budget & workouts
+- **Goals:** set your body stats and goal (maintain or gain) for a daily calorie and protein target, then your week (time to cook, wake time, training days, meals at home, packed or out) and an optional weekly food budget. **Build my week** plans batch cooks on free days, quick cooks on busy ones, and portion sizes to hit your target. It adds breakfasts, snacks and protein shakes timed around training, night-before prep, and a daily water, fruit & veg and sleep checklist. On a budget it picks cheaper dishes until the plan fits. A weekly weigh-in tells you whether to adjust calories.
+- **Calories & cost:** every recipe shows estimated calories, protein, carbs and fat per serving (±15%), plus cost per serving. Set your currency, local price level and your own prices in **Shop → Prices & budget**, and the grocery list shows a total against your budget.
+- **Workouts:** a strength program built from the training days in Goals (full body, upper/lower or push/pull/legs) for the gym, dumbbells or bodyweight. Each exercise has form tips and a progress log that tells you what weight to use next time. The tab also has 6 protein shakes and smoothies (with and without protein powder).
+- These are estimates, not medical or dietary advice. If you have a health condition, check with a professional.
+
 ## Files
 - `data/recipes.js`: the recipe database. The format is documented at the top of the file, so adding a recipe means copying an existing entry.
 - `data/extra-recipes.js`: 25 researched recipes. Each was cross-checked against 2–3 real recipe pages from the dish's country, listed with links in the app.
 - `data/ingredients.js`: the ingredient guide.
+- `data/nutrition.js`, `data/prices.js`: nutrition values and typical prices per ingredient, used for the estimates, plus the shake recipes.
+- `data/workouts.js`: exercises, training programs and training basics.
 - `data/sources.js`: authentic local sources per country, the cooking skills, and the flag for each country.
 - `app.js`: all app logic.
 - `sw.js`: the offline cache. **When you change any app file, bump `VERSION` in this file** so installed copies update. The app then shows "↻ Update ready — tap to reload".

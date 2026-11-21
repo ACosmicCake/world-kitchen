@@ -214,3 +214,11 @@ ul.tl li.k-train { color: var(--blue); font-weight: 600; }
 ul.tl li.k-prep { color: var(--muted); font-style: italic; }
 ul.tl a { color: inherit; }
 .prep-cell { background: #fff8f4; }
+.shop-item .cost { font-size: 12px; font-weight: 700; color: var(--green); white-space: nowrap; }
+details summary { cursor: pointer; }
+.health { background: var(--blue-soft); color: var(--blue); border-radius: 8px; padding: 5px 8px; margin-top: 8px; }
+ul.tl li.k-shake { color: #8a4fb2; }
+ol.exlist { padding-left: 20px; margin: 6px 0; }
+ol.exlist li { padding: 6px 0; border-bottom: 1px dashed var(--line); cursor: pointer; }
+ol.exlist li:hover b { color: var(--accent); }
+.today-card { border: 2px solid var(--accent); }

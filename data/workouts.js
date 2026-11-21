@@ -1,0 +1,67 @@
+// Strength-training library. Each movement has a version for the gym, for dumbbells at home, and for bodyweight only.
+// type: compound (big lifts, longer rest) or accessory. lower: legs/hips (progress in bigger jumps).
+window.EXERCISES = {
+  squat: { name: "Squat", muscles: "Quads, glutes, core", type: "compound", lower: true,
+    gym: "Barbell back squat", dumbbell: "Goblet squat", bodyweight: "Bulgarian split squat (rear foot on a chair)",
+    cues: ["Feet shoulder-width, toes slightly out.", "Brace your stomach like you’re about to be poked, then sit down between your heels.", "Knees track over toes; go as deep as you can with a neutral back.", "Drive up through the whole foot."] },
+  hinge: { name: "Hip hinge", muscles: "Hamstrings, glutes, lower back", type: "compound", lower: true,
+    gym: "Romanian deadlift (barbell)", dumbbell: "Dumbbell Romanian deadlift", bodyweight: "Single-leg hip thrust (shoulders on a sofa)",
+    cues: ["Soft knees, push your hips straight back.", "Keep the weight close to your legs and your back flat.", "Stop when you feel a strong hamstring stretch, then squeeze glutes to stand."] },
+  deadlift: { name: "Deadlift", muscles: "Whole back chain, grip", type: "compound", lower: true,
+    gym: "Conventional deadlift", dumbbell: "Dumbbell deadlift (from the floor)", bodyweight: "Glute bridge, 3-second hold at the top",
+    cues: ["Bar over mid-foot, shins touch the bar.", "Pull the slack out of the bar before lifting.", "Push the floor away; hips and shoulders rise together.", "Never round your lower back — lower the weight if it happens."] },
+  hpush: { name: "Horizontal push", muscles: "Chest, front shoulders, triceps", type: "compound",
+    gym: "Bench press", dumbbell: "Dumbbell floor press or bench press", bodyweight: "Push-ups (feet raised when 15+ is easy)",
+    cues: ["Shoulder blades pinched together and down.", "Lower under control to the chest, elbows about 45° from your body.", "Press up and slightly back."] },
+  vpush: { name: "Vertical push", muscles: "Shoulders, triceps", type: "compound",
+    gym: "Standing overhead press", dumbbell: "Seated dumbbell shoulder press", bodyweight: "Pike push-ups",
+    cues: ["Squeeze glutes and brace so your back doesn’t arch.", "Press straight up, head moves through at the top.", "Lower to chin level."] },
+  hpull: { name: "Horizontal pull", muscles: "Upper back, lats, biceps", type: "compound",
+    gym: "Seated cable row or barbell row", dumbbell: "One-arm dumbbell row", bodyweight: "Inverted row under a sturdy table",
+    cues: ["Pull your elbow toward your hip, not your shoulder.", "Pause and squeeze your shoulder blade back.", "Lower slowly to a full stretch."] },
+  vpull: { name: "Vertical pull", muscles: "Lats, biceps", type: "compound",
+    gym: "Lat pulldown or pull-ups", dumbbell: "Dumbbell pullover + band pulldown", bodyweight: "Pull-ups (or slow negatives) on a bar",
+    cues: ["Start from a dead hang / full stretch.", "Drive elbows down to your ribs; chest up.", "Control the way back up."] },
+  lunge: { name: "Single-leg", muscles: "Quads, glutes, balance", type: "accessory", lower: true,
+    gym: "Walking lunges with dumbbells", dumbbell: "Reverse lunges with dumbbells", bodyweight: "Step-ups onto a chair",
+    cues: ["Long step, torso tall.", "Back knee nearly touches the floor.", "Push through the front heel."] },
+  biceps: { name: "Biceps", muscles: "Biceps", type: "accessory",
+    gym: "EZ-bar curl", dumbbell: "Dumbbell curl", bodyweight: "Chin-ups (palms toward you)",
+    cues: ["Elbows pinned to your sides.", "No swinging — lower for 2–3 seconds."] },
+  triceps: { name: "Triceps", muscles: "Triceps", type: "accessory",
+    gym: "Cable pushdown", dumbbell: "Overhead dumbbell extension", bodyweight: "Bench dips (on a chair)",
+    cues: ["Keep elbows still; only the forearm moves.", "Full stretch at the bottom, squeeze at the top."] },
+  shoulders: { name: "Side delts", muscles: "Side shoulders", type: "accessory",
+    gym: "Cable lateral raise", dumbbell: "Dumbbell lateral raise", bodyweight: "Pike hold / handstand wall walk",
+    cues: ["Light weight, lead with elbows.", "Raise to shoulder height, lower slowly."] },
+  rear: { name: "Rear delts & upper back", muscles: "Rear shoulders, upper back (posture)", type: "accessory",
+    gym: "Face pull", dumbbell: "Bent-over reverse fly", bodyweight: "Prone Y-T raises on the floor",
+    cues: ["Pull to your face, thumbs back.", "Squeeze shoulder blades together."] },
+  calves: { name: "Calves", muscles: "Calves", type: "accessory", lower: true,
+    gym: "Standing calf raise machine", dumbbell: "Single-leg calf raise holding a dumbbell", bodyweight: "Single-leg calf raise on a step",
+    cues: ["Full stretch at the bottom, pause at the top.", "Slow and controlled."] },
+  core: { name: "Core", muscles: "Abs, obliques", type: "accessory",
+    gym: "Cable crunch or hanging knee raise", dumbbell: "Weighted dead bug", bodyweight: "Plank → side plank (seconds instead of reps)",
+    cues: ["Ribs down, lower back pressed flat.", "Breathe out as you crunch or brace."] },
+};
+
+// Splits chosen by how many training days you have. Each day = list of movement ids.
+window.PROGRAMS = {
+  1: { name: "Full body", days: [["squat", "hpush", "hpull", "hinge", "vpush", "core"]], note: "One session a week keeps you strong; two or three builds muscle much faster." },
+  2: { name: "Full body A / B", days: [["squat", "hpush", "hpull", "hinge", "core"], ["deadlift", "vpush", "vpull", "lunge", "biceps", "triceps"]], note: "Each muscle is trained twice a week — the sweet spot for growth." },
+  3: { name: "Full body A / B (alternating)", days: [["squat", "hpush", "hpull", "hinge", "core"], ["deadlift", "vpush", "vpull", "lunge", "biceps", "triceps"]], note: "Alternate A and B: week 1 is A-B-A, week 2 is B-A-B. Ideal for beginners." },
+  4: { name: "Upper / Lower", days: [["hpush", "hpull", "vpush", "vpull", "biceps", "triceps"], ["squat", "hinge", "lunge", "calves", "core"]], note: "Upper, lower, rest, upper, lower — great for steady muscle gain." },
+  5: { name: "Push / Pull / Legs + Upper / Lower", days: [["hpush", "vpush", "shoulders", "triceps"], ["vpull", "hpull", "rear", "biceps"], ["squat", "hinge", "lunge", "calves", "core"], ["hpush", "hpull", "vpush", "vpull"], ["deadlift", "squat", "lunge", "core"]], note: "High volume. Make sure you’re eating enough and sleeping 7–9 hours." },
+  6: { name: "Push / Pull / Legs ×2", days: [["hpush", "vpush", "shoulders", "triceps"], ["vpull", "hpull", "rear", "biceps"], ["squat", "hinge", "lunge", "calves", "core"]], note: "For experienced lifters. Take a deload week every 6–8 weeks." },
+};
+window.DAY_NAMES = { "squat,hpush,hpull,hinge,core": "Full body A", "deadlift,vpush,vpull,lunge,biceps,triceps": "Full body B" };
+
+window.TRAINING_BASICS = [
+  "Warm up 5–10 minutes (brisk walk, bike, or skipping), then do 1–2 lighter sets of your first exercise.",
+  "Rest 2–3 minutes between sets of big lifts, 60–90 seconds for small ones.",
+  "Stop each set 1–2 reps before you can’t do another with good form. Form first, always.",
+  "Progress slowly: when you hit the top of the rep range on every set, add a little weight next time.",
+  "Rest days are when you grow: walk 20–40 minutes, stretch, and sleep 7–9 hours.",
+  "Every 6–8 weeks, take an easier week (half the sets) to let your joints recover.",
+  "New to lifting, injured, or have a health condition? Get a coach or doctor to check you first.",
+];

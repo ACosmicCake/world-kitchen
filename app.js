@@ -69,21 +69,54 @@ function guideFor(name) {
 const NUT = (window.NUTRITION || []).flatMap(([names, k, p, c, f, pc, d]) => names.map((n) => ({ n, k, p, c, f, pc: pc || 0, d: d || 1 })));
 const PRODUCE_DEFAULT = { k: 30, p: 1.5, c: 6, f: 0.2, pc: 100, d: 1 };
 const SIDES = { rice: { label: "cup of rice", kcal: 260, p: 5 }, bread: { label: "bread / injera / tortillas", kcal: 220, p: 7 } };
+// grams of an ingredient line + its nutrition row (null if unknown)
+function gramsFor(i) {
+  const n = i.n.toLowerCase().replace(/\(.*?\)/g, "");
+  let best = null;
+  for (const e of NUT) if (n.includes(e.n) && (!best || e.n.length > best.n.length)) best = e;
+  if (!best && i.a === "produce") best = PRODUCE_DEFAULT;
+  const b = best || { pc: 100, d: 1 };
+  const g = i.q == null || isNaN(i.q) ? 0 : !i.u ? i.q * (b.pc || 100) : i.q * (window.UNIT_GRAMS[i.u] ?? 50) * (window.LIQUID_UNITS.includes(i.u) ? b.d : 1);
+  return { g, best };
+}
 function estimateNutrition(r) {
   const t = { kcal: 0, p: 0, c: 0, f: 0 };
   for (const i of r.ing) {
-    if (i.q == null || isNaN(i.q) || i.a === "spice") continue;
-    const n = i.n.toLowerCase().replace(/\(.*?\)/g, "");
-    let best = null;
-    for (const e of NUT) if (n.includes(e.n) && (!best || e.n.length > best.n.length)) best = e;
-    if (!best) { if (i.a === "produce") best = PRODUCE_DEFAULT; else continue; }
-    let g = !i.u ? i.q * (best.pc || 100) : i.q * (window.UNIT_GRAMS[i.u] ?? 50) * (window.LIQUID_UNITS.includes(i.u) ? best.d : 1);
+    const { g: grams, best } = gramsFor(i);
+    i.grams = grams;
+    if (!grams || i.a === "spice" || !best) continue;
+    let g = grams;
     for (const [re, fr] of window.EATEN_FRACTION || []) if (re.test(i.n)) { g *= fr; break; }
     t.kcal += best.k * g / 100; t.p += best.p * g / 100; t.c += best.c * g / 100; t.f += best.f * g / 100;
   }
   for (const k in t) t[k] = Math.round(t[k] / r.servings);
   return t;
 }
+
+// ───────────── cost estimate (local currency) ─────────────
+const PRICE_ROWS = (window.PRICES || []).flatMap(([names, usd]) => names.map((n) => ({ n, usd })));
+function usdPerKg(name) {
+  const n = name.toLowerCase().replace(/\(.*?\)/g, "");
+  let best = null;
+  for (const e of PRICE_ROWS) if (n.includes(e.n) && (!best || e.n.length > best.n.length)) best = e;
+  return best ? best.usd : null;
+}
+const priceLevel = () => +(state.settings.priceLevel || 1);
+const currency = () => state.settings.currency || "$";
+function fmtMoney(x) { x = +x || 0; return `${currency()}${x >= 100 ? Math.round(x).toLocaleString() : x.toFixed(2)}`; }
+// local price per kg for an ingredient key/name (your override wins)
+function pricePerKg(k, name, aisle) {
+  const o = state.settings.prices?.[k];
+  if (o != null && o !== "") return +o;
+  return (usdPerKg(name) ?? window.AISLE_PRICE?.[aisle] ?? 4) * priceLevel();
+}
+function lineCost(i, grams) {
+  if (i.a === "spice") return (window.SPICE_LINE_COST || 0.15) * priceLevel();
+  return pricePerKg(i.k, i.n, i.a) * (grams ?? i.grams ?? 0) / 1000;
+}
+const recipeCost = (r) => r.ing.reduce((a, i) => a + lineCost(i), 0) / r.servings;   // per serving
+const sideCost = (r) => (r.side === "rice" ? 0.3 : r.side === "bread" ? 0.5 : 0) * priceLevel();
+const addonCost = (id) => (SHAKE_BY_ID[id] ? recipeCost(SHAKE_BY_ID[id]) : (window.ADDON_COST?.[id] ?? 0.5) * priceLevel());
 
 const BY_ID = {};
 for (const r of RECIPES) {
@@ -119,6 +152,14 @@ for (const r of RECIPES) for (const i of r.ing) {
   i.k = ingKey(i.n);
   if (!ALL_INGS[i.k]) ALL_INGS[i.k] = { name: i.n.replace(/\s*\(.*?\)/g, "").replace(/,.*$/, "").replace(/\s*\+.*$/, ""), aisle: i.a };
 }
+// Protein shakes: parsed like mini-recipes so nutrition and cost come from their ingredients
+const SHAKES = (window.SHAKES || []).map((s) => {
+  const r = { ...s, servings: 1 };
+  r.ing = s.ingredients.map((line) => { const [q, u, n, a] = line.split("|"); return { q: parseQty(q), u: u || "", n, a: a || "pantry", k: ingKey(n) }; });
+  r.nut = estimateNutrition(r);
+  return r;
+});
+const SHAKE_BY_ID = Object.fromEntries(SHAKES.map((s) => [s.id, s]));
 // Starter kits: one click to stock the pantry with typical staples (matched against ingredient keys)
 const KITS = {
   "🧂 Basics": ["salt", "sugar", "oil", "black pepper", "olive oil", "flour", "butter", "egg", "onion", "garlic", "tomato paste", "jasmine or short-grain rice", "brown sugar"],
@@ -146,11 +187,12 @@ let state = {
   extras: store.get("extras", []),      // manual grocery items
   settings: store.get("settings", { household: 1 }),
   pantry: store.get("pantry", {}),          // ingredient key -> {name, aisle, added}
+  workout: store.get("workout", { equip: "gym", level: "beginner", log: {} }), // training settings + lift log
   goals: store.get("goals", null),         // gain/maintain plan: profile, weekly schedule, prefs, last result, weigh-ins
   weekOffset: 0,
   filters: { q: "", country: "", diff: 0, maxTime: 0, tag: "", sort: "name" },
 };
-const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals"]) store.set(k, state[k]); };
+const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout"]) store.set(k, state[k]); };
 
 const cookedIds = () => new Set(state.journal.map((j) => j.recipeId));
 function skillCounts() {
@@ -161,7 +203,7 @@ function skillCounts() {
 const skillLevel = (n) => (n >= 5 ? "Confident" : n >= 3 ? "Competent" : n >= 1 ? "Learning" : "Not started");
 
 // ───────────── routing ─────────────
-const views = { goals: renderGoals, ingredients: renderIngredients, pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
+const views = { workouts: renderWorkouts, goals: renderGoals, ingredients: renderIngredients, pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
 function route() {
   const tab = (location.hash.slice(1).split("?")[0]) || "discover";
   $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
@@ -380,7 +422,7 @@ function renderDiscover() {
       <select id="f-country"><option value="">All countries</option>${countries.map((c) => `<option ${c === f.country ? "selected" : ""}>${c}</option>`).join("")}</select>
       <select id="f-diff"><option value="0">Any difficulty</option>${[1, 2, 3].map((d) => `<option value="${d}" ${+f.diff === d ? "selected" : ""}>${DIFF[d]}</option>`).join("")}</select>
       <select id="f-time"><option value="0">Any time</option>${[20, 30, 45, 60, 90, 180].map((t) => `<option value="${t}" ${+f.maxTime === t ? "selected" : ""}>≤ ${fmtMin(t)}</option>`).join("")}</select>
-      <select id="f-sort">${[["name", "Sort: name"], ["time", "Sort: quickest"], ["active", "Sort: least hands-on"], ["diff", "Sort: easiest"], ["have", "Sort: most ingredients I have"], ["kcal", "Sort: most calories"], ["protein", "Sort: most protein per calorie"]].map(([v, l]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="f-sort">${[["name", "Sort: name"], ["time", "Sort: quickest"], ["active", "Sort: least hands-on"], ["diff", "Sort: easiest"], ["have", "Sort: most ingredients I have"], ["kcal", "Sort: most calories"], ["protein", "Sort: most protein per calorie"], ["cheap", "Sort: cheapest per serving"]].map(([v, l]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
     </div>
     <div class="row" style="margin-bottom:16px">${tags.map((t) => `<span class="chip click ${f.tag === t ? "on" : ""}" data-tag="${t}">${t}</span>`).join("")}</div>
     <div class="grid" id="grid"></div>`;
@@ -408,7 +450,7 @@ function drawGrid() {
     (!+f.diff || r.difficulty === +f.diff) &&
     (!+f.maxTime || r.totalMin <= +f.maxTime) &&
     (!f.tag || r.tags.some((t) => t.includes(f.tag))));
-  const sorters = { protein: (a, b) => b.r.nut.p / b.r.nut.kcal - a.r.nut.p / a.r.nut.kcal, kcal: (a, b) => b.r.nut.kcal - a.r.nut.kcal, name: (a, b) => a.r.name.localeCompare(b.r.name), time: (a, b) => a.r.totalMin - b.r.totalMin, active: (a, b) => a.r.activeMin - b.r.activeMin, diff: (a, b) => a.r.difficulty - b.r.difficulty || a.r.totalMin - b.r.totalMin, have: (a, b) => coverage(a.r).missing.length - coverage(b.r).missing.length };
+  const sorters = { cheap: (a, b) => recipeCost(a.r) - recipeCost(b.r), protein: (a, b) => b.r.nut.p / b.r.nut.kcal - a.r.nut.p / a.r.nut.kcal, kcal: (a, b) => b.r.nut.kcal - a.r.nut.kcal, name: (a, b) => a.r.name.localeCompare(b.r.name), time: (a, b) => a.r.totalMin - b.r.totalMin, active: (a, b) => a.r.activeMin - b.r.activeMin, diff: (a, b) => a.r.difficulty - b.r.difficulty || a.r.totalMin - b.r.totalMin, have: (a, b) => coverage(a.r).missing.length - coverage(b.r).missing.length };
   list.sort((a, b) => (terms.length > 1 ? b.match - a.match : 0) || sorters[f.sort](a, b));
   $("#grid").innerHTML = list.length ? list.map(({ r, match }) => `
     <div class="card rcard" data-open="${r.id}">
@@ -417,7 +459,7 @@ function drawGrid() {
       <div class="name">${r.name}</div>
       <div class="native">${r.native} · ${r.country}</div>
       <div><span class="chip diff-${r.difficulty}">${DIFF[r.difficulty]}</span>${r.sourced ? `<span class="badge-src" title="Researched from local recipe pages">📚 sourced</span> ` : ""}${r.tags.filter((t) => t !== "sourced").slice(0, 3).map((t) => `<span class="chip">${t}</span>`).join("")}</div>
-      <div class="meta"><span>⏱ ${fmtMin(r.totalMin)}${r.advance.length ? " + soak" : ""}</span><span>🔪 ${fmtMin(r.activeMin)} hands-on</span><span title="estimated per serving">🔥 ${r.nut.kcal} kcal</span><span title="protein per serving">💪 ${r.nut.p} g</span>${hasPantry ? `<span title="ingredients you have">🏠 ${coverage(r).have}/${r.ing.length}</span>` : ""}
+      <div class="meta"><span>⏱ ${fmtMin(r.totalMin)}${r.advance.length ? " + soak" : ""}</span><span>🔪 ${fmtMin(r.activeMin)} hands-on</span><span title="estimated per serving">🔥 ${r.nut.kcal} kcal</span><span title="protein per serving">💪 ${r.nut.p} g</span><span title="estimated cost per serving">💵 ${fmtMoney(recipeCost(r))}</span>${hasPantry ? `<span title="ingredients you have">🏠 ${coverage(r).have}/${r.ing.length}</span>` : ""}
         ${terms.length > 1 ? `<span>✓ ${match}/${terms.length}</span>` : ""}</div>
     </div>`).join("") : `<div class="empty">No recipes match. Try fewer filters.</div>`;
   $$("#grid [data-open]").forEach((el) => el.addEventListener("click", () => openRecipe(el.dataset.open)));
@@ -454,6 +496,7 @@ function openRecipe(id, scaleServings) {
       <div class="stat"><div class="k">Servings</div><div class="v row" style="gap:6px">
         <button class="btn sm" id="sv-minus">−</button><span id="sv">${servings}</span><button class="btn sm" id="sv-plus">+</button></div></div>
       <div class="stat" title="Estimated from the ingredients (±15%)${r.side ? `; add ~${SIDES[r.side].kcal} kcal for the ${SIDES[r.side].label} it's served with` : ""}"><div class="k">Per serving (est.)</div><div class="v">🔥 ${r.nut.kcal} kcal · 💪 ${r.nut.p} g protein</div><div class="small muted">C ${r.nut.c} g · F ${r.nut.f} g${r.side ? ` · + ${SIDES[r.side].label}` : ""}</div></div>
+      <div class="stat" title="Estimated from typical prices; set your currency, price level and own prices in Shop"><div class="k">Cost (est.)</div><div class="v">💵 ${fmtMoney(recipeCost(r))} / serving</div><div class="small muted">${fmtMoney(recipeCost(r) * servings)} for ${servings}</div></div>
       <div class="stat"><div class="k">Keeps</div><div class="v">${r.store.fridge ? `${r.store.fridge}d fridge` : "eat fresh"}${r.store.freeze ? ` · ${r.store.freeze}mo freezer` : ""}</div></div>
     </div>
     ${r.advance.length ? `<div class="box amber">🌙 <b>Plan ahead:</b> ${r.advance.map((s) => esc(s.t)).join(" ")}</div>` : ""}
@@ -648,7 +691,7 @@ const mealP = (r, m) => Math.round(r.nut.p * m + (r.side ? SIDES[r.side].p : 0))
 
 // The builder: batch-cook on days with time, eat leftovers on busy days, quick cooks where there's a little time,
 // size portions to the calorie target, then close each day's gap with snacks timed around training.
-function buildWeek() {
+function buildWeek(costW = 0) {
   const G = goals(), P = G.prefs;
   state.weekOffset = P.week === "next" ? 1 : 0;
   const dates = weekDates(), today = ymd(new Date());
@@ -660,9 +703,12 @@ function buildWeek() {
   }
   const pool = RECIPES.filter((r) => isMain(r) && r.difficulty <= +P.maxDiff && (!P.veg || r.tags.some((t) => t.startsWith("veg"))));
   const usedR = new Set(), usedC = new Set();
-  const score = (r) => (r.nut.p / r.nut.kcal) * 100 + (r.tags.includes("batch") ? 2 : 0) + (r.store.freeze ? 1 : 0) + Math.random() * 3 - (usedC.has(r.country) ? 4 : 0);
+  const costOf = new Map(pool.map((r) => [r.id, recipeCost(r)]));
+  const avgCost = [...costOf.values()].reduce((s, c) => s + c, 0) / Math.max(1, pool.length) || 1;
+  // protein per calorie, batch-friendliness, variety — and, when on a budget, cheaper dishes
+  const score = (r) => (r.nut.p / r.nut.kcal) * 100 + (r.tags.includes("batch") ? 2 : 0) + (r.store.freeze ? 1 : 0) + Math.random() * 3 - (usedC.has(r.country) ? 4 : 0) - costW * (costOf.get(r.id) / avgCost);
   const choose = (ok) => {
-    const c = pool.filter((r) => !usedR.has(r.id) && ok(r)).sort((a, b) => score(b) - score(a))[0];
+    const c = pool.filter((r) => !usedR.has(r.id) && ok(r)).map((r) => [r, score(r)]).sort((a, b) => b[1] - a[1])[0]?.[0];
     if (c) { usedR.add(c.id); usedC.add(c.country); }
     return c;
   };
@@ -772,7 +818,8 @@ function buildWeek() {
       else if (where === "out") add(t, meal, "Eating out: choose a protein-rich dish with rice or bread", 800, 35, { out: true });
     }
     if (train) {
-      add(train, "train", "Training");
+      const wo = workoutForDay(d.i);
+      add(train, "train", wo ? `Training: ${wo.name} (about ${wo.minutes} min)` : "Training");
       if (train - 90 > wake + 90) add(train - 90, "snack", `${ADDON.banana.name} (pre-workout)`, ADDON.banana.kcal, ADDON.banana.p);
     }
     const sess = sessions.find((x) => x.date === d.date);
@@ -780,19 +827,27 @@ function buildWeek() {
     const quick = entries.find((e) => e.date === d.date && e.type === "cook" && e.meal !== "prep");
     if (quick) { const r = BY_ID[quick.recipeId]; add((quick.meal === "dinner" ? dinnerT : lunchT) - r.totalMin - 5, "cook", `Cook ${r.name} (${fmtMin(r.totalMin)})${quick.servings > quick.eat ? ", and pack tomorrow’s lunch" : ""}`, 0, 0, { recipe: r.id }); }
     let total = items.reduce((a, x) => a + x.kcal, 0);
-    const snackIds = s.train ? ["gainer", "milk", "trail-mix", "pb-toast", "yogurt-bowl", "olive-oil"] : ["trail-mix", "milk", "pb-toast", "yogurt-bowl", "gainer", "olive-oil"];
-    const snackTimes = [lunchT + 180, dinnerT + 150, wake + 210];
     let n = 0;
+    const take = (id, time, suffix = "") => { const a = snackInfo(id); add(time, "snack", a.name + suffix, a.kcal, a.p, { addon: id, shake: !!SHAKE_BY_ID[id] }); total += a.kcal; n++; };
+    // post-workout shake first on training days
+    if (train && d.target - total >= 150) {
+      const gap = d.target - total, gaining = +G.profile.goal > 0 || +G.profile.custom > 0;
+      take(!gaining ? "shake-lean" : gap >= 650 ? "shake-gainer" : "shake-whey", train + 75, " (post-workout)");
+    }
+    let snackIds = ["shake-greek", "trail-mix", "pb-toast", "milk", "shake-sinh-to-bo", "yogurt-bowl", "olive-oil"];
+    snackIds = snackIds.slice(d.i % snackIds.length).concat(snackIds.slice(0, d.i % snackIds.length)); // rotate for variety
+    if (costW > 0) snackIds.sort((x, y) => addonCost(x) / snackInfo(x).kcal - addonCost(y) / snackInfo(y).kcal);
+    const snackTimes = [lunchT + 180, wake + 210];
     for (const id of snackIds) {
       const gap = d.target - total;
       if (gap < 150 || n >= 3) break;
-      const a = ADDON[id];
-      if (a.kcal > gap + 150) continue;
-      add(id === "gainer" && train ? train + 75 : snackTimes[n], "snack", a.name, a.kcal, a.p, { addon: id });
-      total += a.kcal; n++;
+      if (snackInfo(id).kcal > gap + 150) continue;
+      take(id, snackTimes.shift() ?? dinnerT + 120);
     }
+    const sleepT = wake + 16 * 60;
+    if (d.target - total >= 200 && n < 4) take("shake-bedtime", sleepT - 45, " (before bed)");
     items.sort((x, y) => x.time - y.time);
-    return { date: d.date, items, kcal: total, p: items.reduce((a, x) => a + x.p, 0), target: d.target, ptarget: T.protein, train: !!s.train };
+    return { date: d.date, items, kcal: total, p: items.reduce((a, x) => a + x.p, 0), target: d.target, ptarget: T.protein, train: !!s.train, sleep: hhmm(sleepT - 30 + 24 * 60), wake: s.wake };
   });
   // night-before reminders: overnight oats, soaking beans
   out.forEach((d, i) => {
@@ -804,15 +859,35 @@ function buildWeek() {
     prev.items.sort((x, y) => x.time - y.time);
   });
   const lowP = out.filter((d) => !d.past && d.p < d.ptarget - 20);
-  if (lowP.length) notes.push(`Protein is short on ${lowP.map((d) => DAYS[dates.indexOf(d.date)]).join(", ")}. Swap a snack for Greek yogurt or the gainer smoothie, or add 2 eggs.`);
+  if (lowP.length) notes.push(`Protein is short on ${lowP.map((d) => DAYS[dates.indexOf(d.date)]).join(", ")}. Swap a snack for the whey or Greek-yogurt shake, or add 2 eggs.`);
 
-  // write to the meal plan
-  // (also clears a kickoff cook from a previous build, which sits just before the week)
-  if (P.replace) state.plan = state.plan.filter((p) => !(p.date >= today && (dates.includes(p.date) || (p.gp && p.date < dates[0]))));
+  // estimated food cost of this plan: everything cooked + sides + breakfasts/snacks/shakes
+  const cost = entries.filter((e) => e.type === "cook").reduce((s, e) => s + recipeCost(BY_ID[e.recipeId]) * e.servings, 0)
+    + entries.filter((e) => e.eat).reduce((s, e) => s + sideCost(BY_ID[e.recipeId]), 0)
+    + out.reduce((s, d) => s + (d.items || []).reduce((t, x) => t + (x.addon ? addonCost(x.addon) : 0), 0), 0);
+  return { entries, dates, today, result: { week: dates[0], days: out, sessions, notes, cost, built: ymd(new Date()) } };
+}
+// Run the builder; on a budget, retry with stronger preference for cheap dishes and keep the best plan that fits.
+function runBuilder() {
+  const G = goals(), budget = +state.settings.weeklyBudget || 0;
+  let best = buildWeek(0);
+  if (budget && best.result.cost > budget) {
+    for (const w of [2, 4, 8, 16]) for (let t = 0; t < 3; t++) {
+      const c = buildWeek(w);
+      if (c.result.cost < best.result.cost) best = c;
+      if (best.result.cost <= budget) break;
+    }
+    if (best.result.cost > budget) best.result.notes.push(`Even the cheapest plan found is about ${fmtMoney(best.result.cost)}, over your ${fmtMoney(budget)} budget. Try fewer snacks, more lentil/bean dishes, or check your prices in Shop → Prices & budget.`);
+  }
+  best.result.budget = budget;
+  const { entries, dates, today } = best;
+  // write to the meal plan (also clears a kickoff cook from a previous build, which sits just before the week)
+  if (G.prefs.replace) state.plan = state.plan.filter((p) => !(p.date >= today && (dates.includes(p.date) || (p.gp && p.date < dates[0]))));
   state.plan.push(...entries);
-  G.result = { week: dates[0], days: out, sessions, notes, built: ymd(new Date()) };
+  G.result = best.result;
   save();
 }
+const snackInfo = (id) => SHAKE_BY_ID[id] ? { name: SHAKE_BY_ID[id].name, kcal: SHAKE_BY_ID[id].nut.kcal, p: SHAKE_BY_ID[id].nut.p } : ADDON[id];
 
 function renderGoals() {
   const G = goals(), p = G.profile, T = calcTargets(), P = G.prefs;
@@ -845,6 +920,7 @@ function renderGoals() {
       </div>
       <div class="card"><h3>2 · Preferences</h3>
         <label class="field">Hardest recipes to include ${sel("prefs.maxDiff", P.maxDiff, [[1, "Beginner only"], [2, "Up to intermediate"], [3, "Anything"]])}</label>
+        <label class="field">Weekly food budget (${esc(currency())}) <input type="number" step="5" id="g-budget" value="${state.settings.weeklyBudget || ""}" placeholder="no limit" style="width:100px"></label>
         <label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>
         <label class="row small"><input type="checkbox" data-g="prefs.veg" ${P.veg ? "checked" : ""}> Vegetarian only</label>
         <label class="field" style="margin-top:12px">Build for ${sel("prefs.week", P.week, [["this", "This week (from today)"], ["next", "Next week"]])}</label>
@@ -877,7 +953,8 @@ function renderGoals() {
     if (last === "weight" && +el.value > 0) o.weight = +el.value;
     save(); renderGoals();
   });
-  $("#g-build").onclick = () => { buildWeek(); renderGoals(); $("#g-result").scrollIntoView({ behavior: "smooth" }); };
+  $("#g-budget").onchange = (e) => { state.settings.weeklyBudget = Math.max(0, +e.target.value || 0); save(); renderGoals(); };
+  $("#g-build").onclick = () => { runBuilder(); renderGoals(); $("#g-result").scrollIntoView({ behavior: "smooth" }); };
   $("#w-add").onclick = () => {
     const kg = +$("#w-kg").value; if (!kg) return;
     G.weighIns = (G.weighIns || []).filter((w) => w.date !== $("#w-date").value).concat({ date: $("#w-date").value, kg }).sort((a, b) => a.date.localeCompare(b.date));
@@ -889,12 +966,13 @@ function renderGoals() {
 }
 
 function renderGoalResult(R) {
-  const icon = { breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️" };
+  const icon = { shake: "🥤", breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️" };
   const live = R.days.filter((d) => !d.past);
   const avg = live.length ? Math.round(live.reduce((a, d) => a + d.kcal, 0) / live.length) : 0;
   return `
     <h2>Your plan for the week of ${dayLabel(parseYmd(R.week))}</h2>
-    <div class="row"><a class="btn" href="#plan">📅 See it in the meal plan</a><a class="btn" href="#shop">🛒 Grocery list</a><span class="muted small">Average ≈ ${avg} kcal/day</span></div>
+    <div class="row"><a class="btn" href="#plan">📅 See it in the meal plan</a><a class="btn" href="#shop">🛒 Grocery list</a><span class="muted small">Average ≈ ${avg} kcal/day</span>
+      ${R.cost != null ? `<span class="chip ${R.budget && R.cost > R.budget ? "diff-3" : "diff-1"}">💵 Food ≈ ${fmtMoney(R.cost)}${R.budget ? ` / ${fmtMoney(R.budget)} budget` : " this week"}</span>` : ""}</div>
     ${R.notes.length ? `<div class="box amber small">${R.notes.map(esc).join("<br>")}</div>` : ""}
     ${R.sessions.length ? `<h3 style="margin-top:18px">🔥 When to cook</h3>${R.sessions.map((s) => `<div class="box green"><b>${dayLabel(parseYmd(s.date))}, ${hhmm(s.start)} to ${hhmm(s.start + s.minutes)}</b>: ${s.recipes.map((id) => `<a href="#" data-open="${id}">${BY_ID[id].name}</a>`).join(" + ")}
       <span class="small muted">(${fmtMin(s.minutes)} cooked together, ${fmtMin(s.handsOn)} hands-on)</span>${s.frozen.length ? `<div class="small">🧊 Freeze: ${s.frozen.map(esc).join(", ")}</div>` : ""}
@@ -904,7 +982,8 @@ function renderGoalResult(R) {
       <div class="row"><b>${dayLabel(parseYmd(d.date))}</b>${d.train ? `<span class="chip diff-2">training day</span>` : ""}<span class="spacer"></span><span class="small"><b>${d.kcal}</b> / ${d.target} kcal</span></div>
       <div class="bar"><div style="width:${Math.min(100, (d.kcal / d.target) * 100)}%;background:${Math.abs(d.kcal - d.target) <= 150 ? "var(--green)" : "var(--amber)"}"></div></div>
       <div class="small muted">💪 Protein ${d.p} / ${d.ptarget} g</div>
-      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}"><span class="time">${hhmm(x.time)}</span> ${icon[x.kind] || "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
+      <div class="health small">💧 2.5–3 L water · 🥦 5+ fruit & veg portions · 😴 lights out ${d.sleep || "by 23:00"}${d.train ? "" : " · 🚶 30-min walk (rest day)"}</div>
+      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}${x.shake ? " k-shake" : ""}"><span class="time">${hhmm(x.time)}</span> ${x.shake ? "🥤" : x.kind === "train" ? `<a href="#workouts" title="Open workout">🏋️</a>` : icon[x.kind] || "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
     </div>`).join("")}</div>
     <div class="box blue small" style="margin-top:12px"><b>Tips for gaining:</b> eat every 3–4 hours rather than forcing huge meals. Drink some of your calories (milk, smoothies) if you get full easily. Keep a protein source in every meal. If the scale hasn't moved after 2 weeks, add about 150 kcal a day.</div>`;
 }
@@ -927,8 +1006,106 @@ function weighInSummary() {
   return `${advice}<div class="row" style="margin-top:8px">${W.slice(-8).map((w) => `<span class="chip">${w.date.slice(5)}: ${w.kg} kg</span>`).join("")}</div>`;
 }
 
+// ───────────── WORKOUTS: strength program that follows your Goals schedule ─────────────
+const EX = window.EXERCISES || {};
+const SESSION_NAMES = { 1: ["Full body"], 2: ["Full body A", "Full body B"], 3: ["Full body A", "Full body B"], 4: ["Upper", "Lower"], 5: ["Push", "Pull", "Legs", "Upper", "Lower"], 6: ["Push", "Pull", "Legs"] };
+const trainingDays = () => goals().schedule.map((s, i) => (s.train ? i : -1)).filter((i) => i >= 0);
+const weekNumber = () => Math.floor((weekStart() - new Date(2020, 0, 6)) / (7 * 864e5));
+function setsFor(id) {
+  const e = EX[id], W = state.workout;
+  if (W.equip === "bodyweight") return id === "core" ? { sets: 3, reps: "30–60 s", top: 60 } : { sets: 3, reps: "8–20", top: 20 };
+  if (e.type === "compound") return W.level === "beginner" ? { sets: 3, reps: "6–10", top: 10 } : { sets: 4, reps: "5–8", top: 8 };
+  return { sets: 3, reps: id === "core" ? "10–15 (or 30–60 s)" : "10–15", top: 15 };
+}
+function workoutForDay(i) {
+  const td = trainingDays(), k = td.indexOf(i);
+  if (k < 0) return null;
+  const n = Math.min(td.length, 6), prog = window.PROGRAMS[n], names = SESSION_NAMES[n];
+  const idx = n === 3 ? (k + (weekNumber() % 2)) % 2 : k % prog.days.length; // 3 days: A-B-A one week, B-A-B the next
+  const moves = prog.days[idx];
+  const minutes = 10 + moves.reduce((s, id) => { const x = setsFor(id); return s + x.sets * (EX[id].type === "compound" ? 3.5 : 2); }, 0);
+  return { name: names[idx], moves, minutes: Math.round(minutes / 5) * 5, program: prog };
+}
+const exName = (id) => EX[id][state.workout.equip] || EX[id].gym;
+function nextTarget(id) {
+  const log = state.workout.log[id] || [], e = EX[id], W = state.workout, top = setsFor(id).top;
+  if (!log.length) return "First time: pick a weight you could lift for the top of the rep range with 2 reps to spare. Log it, and the app tells you what to do next time.";
+  const last = log[log.length - 1], reps = String(last.reps).split(/[\s,/]+/).map(Number).filter((x) => x > 0);
+  if (reps.length && reps.every((r) => r >= top)) {
+    if (W.equip === "bodyweight" && !+last.weight) return `You hit ${top}+ reps on every set. Next time, move to a harder version (see tips) or wear a loaded backpack.`;
+    const inc = e.lower ? (W.equip === "gym" ? 5 : 4) : W.equip === "gym" ? 2.5 : 2;
+    return `You hit the top of the range on every set. Next time: ${(+last.weight || 0) + inc} kg.`;
+  }
+  return `Next time: stay at ${+last.weight ? last.weight + " kg" : "the same difficulty"} and aim for 1 more rep on each set (last time: ${reps.join(", ") || "?"}).`;
+}
+
+function renderWorkouts() {
+  const W = state.workout, G = goals(), td = trainingDays();
+  const sel = (id, val, opts) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${v === val ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  const todayI = (new Date().getDay() + 6) % 7;
+  const prog = td.length ? window.PROGRAMS[Math.min(td.length, 6)] : null;
+  $("#view").innerHTML = `
+    <h1>Workouts</h1>
+    <p class="sub">Strength training to go with your food plan. Your training days and times come from the weekly schedule in <a href="#goals">Goals</a>, so meals and shakes are already timed around them.</p>
+    <div class="row" style="margin-bottom:14px">
+      <label class="field">Equipment ${sel("w-equip", W.equip, [["gym", "Gym"], ["dumbbell", "Dumbbells at home"], ["bodyweight", "No equipment (bodyweight)"]])}</label>
+      <label class="field">Experience ${sel("w-level", W.level, [["beginner", "Beginner (under ~1 year)"], ["intermediate", "Intermediate"]])}</label>
+    </div>
+    ${!td.length ? `<div class="box amber">You have no training days set. <button class="btn sm" id="w-default">Use Mon / Wed / Fri at 18:00</button> or pick days in <a href="#goals">Goals → Your week</a>.</div>` : `
+    <div class="box green"><b>Your program: ${prog.name}</b> (${td.length} day${td.length > 1 ? "s" : ""} a week). ${esc(prog.note)}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));margin-top:14px">
+    ${td.map((i) => { const wo = workoutForDay(i); return `<div class="card ${i === todayI && state.weekOffset === 0 ? "today-card" : ""}">
+      <div class="row"><b>${DAYS[i]} · ${esc(G.schedule[i].trainAt)}</b>${i === todayI ? `<span class="chip diff-2">today</span>` : ""}<span class="spacer"></span><span class="small muted">≈ ${wo.minutes} min</span></div>
+      <h3 style="margin:6px 0">${wo.name}</h3>
+      <ol class="exlist">${wo.moves.map((id) => { const s = setsFor(id), last = (W.log[id] || []).slice(-1)[0]; return `<li data-ex="${id}">
+        <b>${esc(exName(id))}</b> <span class="muted small">${s.sets} × ${s.reps}</span>
+        ${last ? `<div class="small muted">Last: ${last.weight ? last.weight + " kg × " : ""}${esc(last.reps)} (${last.date.slice(5)})</div>` : ""}</li>`; }).join("")}</ol>
+      <div class="small muted">Warm up 5–10 min first. Tap an exercise for form tips and to log it.</div></div>`; }).join("")}
+    </div>`}
+    <h2>🥤 Protein shakes & smoothies</h2>
+    <p class="small muted" style="margin-top:-6px">The meal planner adds these around training. Nutrition and cost are worked out from the ingredients.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+    ${SHAKES.map((s) => `<div class="card"><b>${esc(s.name)}</b>${s.native ? ` <span class="muted small">${esc(s.native)}</span>` : ""}
+      <div class="small muted">${esc(s.when)}</div>
+      <div class="row" style="margin:6px 0"><span class="chip">🔥 ${s.nut.kcal} kcal</span><span class="chip">💪 ${s.nut.p} g protein</span><span class="chip">💵 ${fmtMoney(recipeCost(s))}</span></div>
+      <ul class="small" style="padding-left:18px;margin:6px 0">${s.ing.map((i) => `<li>${i.q != null ? fmtQty(i.q, i.u) + " " + i.u + " " : ""}${esc(i.n)}</li>`).join("")}</ul>
+      <div class="small">${esc(s.how)}</div><div class="small muted" style="margin-top:4px">💡 ${esc(s.tip)}</div></div>`).join("")}
+    </div>
+    <h2>📋 Training basics</h2>
+    <ul class="small">${(window.TRAINING_BASICS || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`;
+  $("#w-equip").onchange = (e) => { W.equip = e.target.value; save(); renderWorkouts(); };
+  $("#w-level").onchange = (e) => { W.level = e.target.value; save(); renderWorkouts(); };
+  if ($("#w-default")) $("#w-default").onclick = () => { G.schedule.forEach((s, i) => { s.train = [0, 2, 4].includes(i); s.trainAt = "18:00"; }); save(); renderWorkouts(); };
+  $$("[data-ex]").forEach((li) => li.onclick = () => openExercise(li.dataset.ex));
+}
+
+function openExercise(id) {
+  const e = EX[id], W = state.workout, s = setsFor(id), log = W.log[id] || [];
+  const q = encodeURIComponent(`${exName(id)} proper form`);
+  openModal(`
+    <h2 style="margin-top:0">${esc(exName(id))}</h2>
+    <div class="muted">${esc(e.muscles)} · ${s.sets} sets × ${s.reps} · rest ${e.type === "compound" ? "2–3 min" : "60–90 s"}</div>
+    <div class="box"><b>How to do it</b><ul class="small">${e.cues.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
+      <a class="small" href="https://www.youtube.com/results?search_query=${q}" target="_blank" rel="noopener">▶ Watch form videos (YouTube search) ↗</a></div>
+    <div class="small muted" style="margin-top:8px">Other versions: gym: ${esc(e.gym)} · dumbbells: ${esc(e.dumbbell)} · bodyweight: ${esc(e.bodyweight)}</div>
+    <div class="box green"><b>🎯 ${esc(nextTarget(id))}</b></div>
+    <h3 style="margin-top:16px">Log a session</h3>
+    <div class="row"><input type="date" id="ex-date" value="${ymd(new Date())}">
+      <label class="small">Weight (kg) <input type="number" step="0.5" id="ex-w" style="width:80px" placeholder="${W.equip === "bodyweight" ? "0" : ""}" value="${log.length ? log[log.length - 1].weight || "" : ""}"></label>
+      <label class="small">Reps per set <input id="ex-reps" placeholder="e.g. 10, 9, 8" style="width:120px"></label>
+      <button class="btn primary" id="ex-save">Save</button></div>
+    ${log.length ? `<h3 style="margin-top:16px">History</h3><table class="sched">${log.slice(-8).reverse().map((l, k) => `<tr><td>${l.date}</td><td>${l.weight ? l.weight + " kg" : "bodyweight"}</td><td>${esc(l.reps)}</td><td><button class="btn sm ghost" data-del-log="${log.length - 1 - k}">🗑</button></td></tr>`).join("")}</table>` : ""}`, true);
+  $("#ex-save").onclick = () => {
+    const reps = $("#ex-reps").value.trim(); if (!reps) return alert("Enter the reps you did for each set, e.g. 10, 9, 8");
+    (W.log[id] = W.log[id] || []).push({ date: $("#ex-date").value, weight: +$("#ex-w").value || 0, reps });
+    W.log[id].sort((x, y) => x.date.localeCompare(y.date));
+    save(); openExercise(id); if (location.hash === "#workouts") renderWorkouts();
+  };
+  $$("[data-del-log]").forEach((b) => b.onclick = () => { W.log[id].splice(+b.dataset.delLog, 1); save(); openExercise(id); });
+}
+
 // ───────────── BACKUP / RESTORE ─────────────
-const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals"];
+const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout"];
 function exportBackup() {
   const data = { app: "world-kitchen", version: 1, exported: new Date().toISOString(), prepStart: store.get("prepStart", "10:00") };
   for (const k of BACKUP_KEYS) data[k] = state[k];
@@ -1182,7 +1359,28 @@ function buildShoppingList(entries) {
       it.for.add(r.name);
     }
   }
-  return Object.entries(items).map(([key, v]) => ({ key, ...v, for: [...v.for] }));
+  return Object.entries(items).map(([key, v]) => {
+    const g = gramsFor({ q: v.hasQ ? v.q : null, u: v.unit, n: v.name, a: v.aisle }).g;
+    return { key, ...v, for: [...v.for], cost: v.hasQ || v.aisle === "spice" ? lineCost({ k: v.k, n: v.name, a: v.aisle }, g) : 0, perKg: pricePerKg(v.k, v.name, v.aisle) };
+  });
+}
+// breakfasts / snacks / shakes the Goals planner scheduled this week → counts + shake ingredients to buy
+function goalsExtrasForWeek(dates) {
+  const R = state.goals?.result;
+  if (!R || R.week !== dates[0]) return null;
+  const counts = {};
+  for (const d of R.days) for (const x of d.items || []) if (x.addon) counts[x.addon] = (counts[x.addon] || 0) + 1;
+  const ids = Object.keys(counts);
+  if (!ids.length) return null;
+  const shakeItems = {};
+  for (const id of ids) if (SHAKE_BY_ID[id]) for (const i of SHAKE_BY_ID[id].ing) {
+    if (i.q == null || i.k === "water" || i.k === "ice") continue;
+    const key = i.k + "|" + i.u;
+    const it = shakeItems[key] || (shakeItems[key] = { name: i.n, k: i.k, unit: i.u, aisle: i.a, q: 0 });
+    it.q += i.q * counts[id];
+  }
+  const cost = ids.reduce((s, id) => s + addonCost(id) * counts[id], 0);
+  return { counts, shakeItems: Object.values(shakeItems), cost };
 }
 
 function renderShop() {
@@ -1202,14 +1400,26 @@ function renderShop() {
         <input type="checkbox" data-chk="${esc(i.key)}" ${checks[i.key] ? "checked" : ""}>
         <b>${i.hasQ ? `${fmtQty(i.q, i.unit)} ${i.unit}` : ""}</b> ${esc(i.name)}
         <span class="for">${i.for.map(esc).join(", ")}</span>
+        ${i.cost ? `<span class="cost">${fmtMoney(i.cost)}</span>` : ""}
         ${FRESH_AISLES.includes(i.aisle) ? "" : `<button class="btn sm ghost" data-have="${esc(i.k)}" title="I already have this — remember it">🏠</button>`}</label>`).join("")}</div>`).join("");
   };
   const cooks = entries.filter((e) => e.type === "cook");
+  const S = state.settings;
+  const sum = (l) => l.reduce((s, i) => s + (i.cost || 0), 0);
+  const extrasG = goalsExtrasForWeek(dates);
+  const toBuy = sum(fresh) + sum(pantry) + (extrasG ? extrasG.cost : 0), homeValue = sum(atHome);
+  const budget = +S.weeklyBudget || 0;
   $("#view").innerHTML = `
     <div class="row"><h1>Grocery List</h1><span class="spacer"></span>
       <button class="btn" id="wk-prev">←</button><b>${dayLabel(ws)} – ${dayLabel(addDays(ws, 6))}</b><button class="btn" id="wk-next">→</button></div>
     <p class="sub">Combined and scaled from the ${cooks.length} cooking session(s) in your plan. Leftover and freezer meals need no shopping.</p>
     ${cooks.length ? `
+    <div class="summary">
+      <div class="stat"><div class="k">To buy this week (est.)</div><div class="v" style="color:${budget && toBuy > budget ? "var(--red)" : "var(--green)"}">${fmtMoney(toBuy)}</div>${budget ? `<div class="small muted">budget ${fmtMoney(budget)} · ${toBuy > budget ? `${fmtMoney(toBuy - budget)} over` : `${fmtMoney(budget - toBuy)} left`}</div>` : ""}</div>
+      <div class="stat"><div class="k">Already at home (value)</div><div class="v">${fmtMoney(homeValue)}</div></div>
+      <div class="stat"><div class="k">Per home meal</div><div class="v">${fmtMoney((sum(fresh) + sum(pantry) + homeValue) / Math.max(1, entries.filter((p) => p.meal !== "prep").length))}</div></div>
+    </div>
+    ${budget ? `<div class="bar"><div style="width:${Math.min(100, (toBuy / budget) * 100)}%;background:${toBuy > budget ? "var(--red)" : "var(--green)"}"></div></div>` : ""}
     <div class="row"><button class="btn primary" id="copy">📋 Copy list</button><button class="btn" id="uncheck">Uncheck all</button>
       <span class="muted small">Tip: buy fresh herbs & seafood within 1–2 days of the cook date.</span></div>
     <div class="two" style="margin-top:12px">
@@ -1219,12 +1429,17 @@ function renderShop() {
     <div class="row" style="margin-top:8px"><button class="btn" id="to-pantry">🏠 Put checked staples in my pantry</button></div>
     ${atHome.length ? `<h2>✓ Already at home (${atHome.length})</h2><p class="small muted">Skipped because they're in your pantry. Running low? Tap to put it back on the list.</p>
       <div>${atHome.sort((a, b) => a.name.localeCompare(b.name)).map((i) => `<span class="chip click diff-1" data-need="${esc(i.k)}" title="Running low — add back to list">✓ ${esc(i.name)}</span>`).join("")}</div>` : ""}
+    ${extrasG ? `<h2>🥤 Breakfasts, snacks & shakes (from your Goals plan)</h2>
+      <p class="small muted">${Object.entries(extrasG.counts).map(([id, n]) => `${esc((SHAKE_BY_ID[id] || ADDON[id] || { name: id }).name)} × ${n}`).join(" · ")} — about ${fmtMoney(extrasG.cost)} in total.</p>
+      ${extrasG.shakeItems.length ? `<div>${extrasG.shakeItems.map((i) => `<span class="chip">${fmtQty(i.q, i.unit)} ${i.unit} ${esc(i.name)}</span>`).join("")}</div><p class="small muted">Shake ingredients above. Simple add-ons (toast, oats, milk, nuts) — grab what you need.</p>` : ""}` : ""}
     <h2>➕ Extra items</h2>
     <div class="row"><input id="extra" placeholder="e.g. coffee, dish soap"><button class="btn" id="add-extra">Add</button></div>
     <div style="margin-top:8px">${state.extras.map((x, i) => `<label class="shop-item"><input type="checkbox" data-xdel="${i}"> ${esc(x)}</label>`).join("")}</div>
     <h2>📅 When to shop</h2>
-    <div class="box">${shopTiming(cooks)}</div>`
-    : `<div class="empty">No cooking sessions planned this week. <a href="#plan">Plan some meals</a> and the list builds itself.</div>`}`;
+    <div class="box">${shopTiming(cooks)}</div>
+    ${priceSettingsHtml(items)}`
+    : `<div class="empty">No cooking sessions planned this week. <a href="#plan">Plan some meals</a> and the list builds itself.</div>${priceSettingsHtml([])}`}`;
+  bindPriceSettings(renderShop);
   $("#wk-prev").onclick = () => { state.weekOffset--; renderShop(); };
   $("#wk-next").onclick = () => { state.weekOffset++; renderShop(); };
   $$("[data-chk]").forEach((c) => c.onchange = () => { checks[c.dataset.chk] = c.checked; c.parentElement.classList.toggle("done", c.checked); save(); });
@@ -1245,6 +1460,40 @@ function renderShop() {
       ...(state.extras.length ? ["", "EXTRAS", ...state.extras.map((x) => "- " + x)] : [])];
     navigator.clipboard.writeText(lines.join("\n")).then(() => { $("#copy").textContent = "✓ Copied"; });
   };
+}
+
+// Currency, price level and your own prices. Everything is an estimate until you enter what you pay.
+const PRICE_LEVELS = [[0.35, "Very low-cost (e.g. Vietnam, India, Indonesia)"], [0.55, "Low-cost (e.g. Mexico, Thailand, Turkey)"], [0.8, "Medium (e.g. Southern/Eastern Europe)"], [1, "US average"], [1.15, "High (e.g. UK, Western Europe, Australia)"], [1.35, "Very high (e.g. Switzerland, Norway, big-city central)"]];
+function priceSettingsHtml(items) {
+  const S = state.settings, own = S.prices || {};
+  const list = items.filter((i) => i.aisle !== "spice" && i.hasQ).sort((a, b) => b.cost - a.cost);
+  return `<h2>💰 Prices & budget</h2>
+    <div class="card">
+      <div class="row">
+        <label class="field">Currency symbol <input id="ps-cur" value="${esc(currency())}" style="width:70px"></label>
+        <label class="field">Price level where you shop <select id="ps-level">${PRICE_LEVELS.map(([v, l]) => `<option value="${v}" ${+priceLevel() === v ? "selected" : ""}>${l}</option>`).join("")}<option value="custom" ${PRICE_LEVELS.some(([v]) => v === priceLevel()) ? "" : "selected"}>Custom: ×${priceLevel()}</option></select></label>
+        <label class="field">Custom multiplier <input id="ps-mult" type="number" step="0.05" value="${priceLevel()}" style="width:80px"></label>
+        <label class="field">Weekly food budget <input id="ps-budget" type="number" step="5" value="${S.weeklyBudget || ""}" placeholder="none" style="width:100px"></label>
+      </div>
+      <p class="small muted" style="margin:0">Built-in prices are typical US supermarket averages × your price level, so treat totals as rough. Enter what you actually pay below and the estimates sharpen (prices are per kg or per litre, in your currency).</p>
+      ${list.length ? `<details style="margin-top:10px"><summary><b>Set your own prices for this week’s items</b> (${Object.keys(own).length} saved)</summary>
+        <table class="sched" style="margin-top:8px"><tr><th>Item</th><th>Estimate / kg</th><th>Your price / kg</th><th>This week</th></tr>
+        ${list.map((i) => `<tr><td>${esc(i.name)}</td><td class="muted">${fmtMoney(own[i.k] != null && own[i.k] !== "" ? (usdPerKg(i.name) ?? window.AISLE_PRICE[i.aisle] ?? 4) * priceLevel() : i.perKg)}</td>
+          <td><input type="number" step="0.1" data-price="${esc(i.k)}" value="${own[i.k] ?? ""}" placeholder="—" style="width:90px"></td><td>${fmtMoney(i.cost)}</td></tr>`).join("")}</table></details>` : ""}
+    </div>`;
+}
+function bindPriceSettings(rerender) {
+  const S = state.settings;
+  const set = (fn) => { fn(); save(); rerender(); };
+  if (!$("#ps-cur")) return;
+  $("#ps-cur").onchange = (e) => set(() => (S.currency = e.target.value.trim() || "$"));
+  $("#ps-level").onchange = (e) => { if (e.target.value !== "custom") set(() => (S.priceLevel = +e.target.value)); };
+  $("#ps-mult").onchange = (e) => set(() => (S.priceLevel = Math.max(0.05, +e.target.value || 1)));
+  $("#ps-budget").onchange = (e) => set(() => (S.weeklyBudget = Math.max(0, +e.target.value || 0)));
+  $$("[data-price]").forEach((inp) => inp.onchange = () => set(() => {
+    S.prices = S.prices || {};
+    if (inp.value === "") delete S.prices[inp.dataset.price]; else S.prices[inp.dataset.price] = +inp.value;
+  }));
 }
 
 function shopTiming(cooks) {
