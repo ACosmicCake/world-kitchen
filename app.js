@@ -65,6 +65,26 @@ function guideFor(name) {
   for (const p of GUIDE_PATTERNS) if (p.re.test(n) && (!best || p.len > best.len)) best = p;
   return best ? best.g : null;
 }
+// ───────────── nutrition estimate (per serving, ±15%) ─────────────
+const NUT = (window.NUTRITION || []).flatMap(([names, k, p, c, f, pc, d]) => names.map((n) => ({ n, k, p, c, f, pc: pc || 0, d: d || 1 })));
+const PRODUCE_DEFAULT = { k: 30, p: 1.5, c: 6, f: 0.2, pc: 100, d: 1 };
+const SIDES = { rice: { label: "cup of rice", kcal: 260, p: 5 }, bread: { label: "bread / injera / tortillas", kcal: 220, p: 7 } };
+function estimateNutrition(r) {
+  const t = { kcal: 0, p: 0, c: 0, f: 0 };
+  for (const i of r.ing) {
+    if (i.q == null || isNaN(i.q) || i.a === "spice") continue;
+    const n = i.n.toLowerCase().replace(/\(.*?\)/g, "");
+    let best = null;
+    for (const e of NUT) if (n.includes(e.n) && (!best || e.n.length > best.n.length)) best = e;
+    if (!best) { if (i.a === "produce") best = PRODUCE_DEFAULT; else continue; }
+    let g = !i.u ? i.q * (best.pc || 100) : i.q * (window.UNIT_GRAMS[i.u] ?? 50) * (window.LIQUID_UNITS.includes(i.u) ? best.d : 1);
+    for (const [re, fr] of window.EATEN_FRACTION || []) if (re.test(i.n)) { g *= fr; break; }
+    t.kcal += best.k * g / 100; t.p += best.p * g / 100; t.c += best.c * g / 100; t.f += best.f * g / 100;
+  }
+  for (const k in t) t[k] = Math.round(t[k] / r.servings);
+  return t;
+}
+
 const BY_ID = {};
 for (const r of RECIPES) {
   r.ing = r.ingredients.map((line) => { const [q, u, n, a] = line.split("|"); return { q: parseQty(q), u: u || "", n, a: a || "pantry" }; });
@@ -79,6 +99,10 @@ for (const r of RECIPES) {
   r.totalMin = main.reduce((a, s) => a + s.min, 0);
   r.flag = `<span class="fl">${window.FLAGS[r.country] || "🍽️"}</span>`;
   for (const i of r.ing) i.g = guideFor(i.n);
+  r.nut = estimateNutrition(r);
+  // starch served alongside but not in the ingredient amounts (e.g. "steamed rice (to serve)")
+  const served = r.ing.filter((i) => i.q == null).map((i) => i.n.toLowerCase()).join(" ");
+  r.side = /rice/.test(served) ? "rice" : /injera|bread|khobz|tortilla|baguette/.test(served) ? "bread" : null;
   r.sourced = Array.isArray(r.sources) && r.sources.length > 0;
   if (r.sourced && !r.tags.includes("sourced")) r.tags.push("sourced");
   BY_ID[r.id] = r;
@@ -122,10 +146,11 @@ let state = {
   extras: store.get("extras", []),      // manual grocery items
   settings: store.get("settings", { household: 1 }),
   pantry: store.get("pantry", {}),          // ingredient key -> {name, aisle, added}
+  goals: store.get("goals", null),         // gain/maintain plan: profile, weekly schedule, prefs, last result, weigh-ins
   weekOffset: 0,
   filters: { q: "", country: "", diff: 0, maxTime: 0, tag: "", sort: "name" },
 };
-const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry"]) store.set(k, state[k]); };
+const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals"]) store.set(k, state[k]); };
 
 const cookedIds = () => new Set(state.journal.map((j) => j.recipeId));
 function skillCounts() {
@@ -136,7 +161,7 @@ function skillCounts() {
 const skillLevel = (n) => (n >= 5 ? "Confident" : n >= 3 ? "Competent" : n >= 1 ? "Learning" : "Not started");
 
 // ───────────── routing ─────────────
-const views = { ingredients: renderIngredients, pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
+const views = { goals: renderGoals, ingredients: renderIngredients, pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
 function route() {
   const tab = (location.hash.slice(1).split("?")[0]) || "discover";
   $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
@@ -355,7 +380,7 @@ function renderDiscover() {
       <select id="f-country"><option value="">All countries</option>${countries.map((c) => `<option ${c === f.country ? "selected" : ""}>${c}</option>`).join("")}</select>
       <select id="f-diff"><option value="0">Any difficulty</option>${[1, 2, 3].map((d) => `<option value="${d}" ${+f.diff === d ? "selected" : ""}>${DIFF[d]}</option>`).join("")}</select>
       <select id="f-time"><option value="0">Any time</option>${[20, 30, 45, 60, 90, 180].map((t) => `<option value="${t}" ${+f.maxTime === t ? "selected" : ""}>≤ ${fmtMin(t)}</option>`).join("")}</select>
-      <select id="f-sort">${[["name", "Sort: name"], ["time", "Sort: quickest"], ["active", "Sort: least hands-on"], ["diff", "Sort: easiest"], ["have", "Sort: most ingredients I have"]].map(([v, l]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="f-sort">${[["name", "Sort: name"], ["time", "Sort: quickest"], ["active", "Sort: least hands-on"], ["diff", "Sort: easiest"], ["have", "Sort: most ingredients I have"], ["kcal", "Sort: most calories"], ["protein", "Sort: most protein per calorie"]].map(([v, l]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
     </div>
     <div class="row" style="margin-bottom:16px">${tags.map((t) => `<span class="chip click ${f.tag === t ? "on" : ""}" data-tag="${t}">${t}</span>`).join("")}</div>
     <div class="grid" id="grid"></div>`;
@@ -383,7 +408,7 @@ function drawGrid() {
     (!+f.diff || r.difficulty === +f.diff) &&
     (!+f.maxTime || r.totalMin <= +f.maxTime) &&
     (!f.tag || r.tags.some((t) => t.includes(f.tag))));
-  const sorters = { name: (a, b) => a.r.name.localeCompare(b.r.name), time: (a, b) => a.r.totalMin - b.r.totalMin, active: (a, b) => a.r.activeMin - b.r.activeMin, diff: (a, b) => a.r.difficulty - b.r.difficulty || a.r.totalMin - b.r.totalMin, have: (a, b) => coverage(a.r).missing.length - coverage(b.r).missing.length };
+  const sorters = { protein: (a, b) => b.r.nut.p / b.r.nut.kcal - a.r.nut.p / a.r.nut.kcal, kcal: (a, b) => b.r.nut.kcal - a.r.nut.kcal, name: (a, b) => a.r.name.localeCompare(b.r.name), time: (a, b) => a.r.totalMin - b.r.totalMin, active: (a, b) => a.r.activeMin - b.r.activeMin, diff: (a, b) => a.r.difficulty - b.r.difficulty || a.r.totalMin - b.r.totalMin, have: (a, b) => coverage(a.r).missing.length - coverage(b.r).missing.length };
   list.sort((a, b) => (terms.length > 1 ? b.match - a.match : 0) || sorters[f.sort](a, b));
   $("#grid").innerHTML = list.length ? list.map(({ r, match }) => `
     <div class="card rcard" data-open="${r.id}">
@@ -392,7 +417,7 @@ function drawGrid() {
       <div class="name">${r.name}</div>
       <div class="native">${r.native} · ${r.country}</div>
       <div><span class="chip diff-${r.difficulty}">${DIFF[r.difficulty]}</span>${r.sourced ? `<span class="badge-src" title="Researched from local recipe pages">📚 sourced</span> ` : ""}${r.tags.filter((t) => t !== "sourced").slice(0, 3).map((t) => `<span class="chip">${t}</span>`).join("")}</div>
-      <div class="meta"><span>⏱ ${fmtMin(r.totalMin)}${r.advance.length ? " + soak" : ""}</span><span>🔪 ${fmtMin(r.activeMin)} hands-on</span><span>🍽 ${r.servings}</span>${hasPantry ? `<span title="ingredients you have">🏠 ${coverage(r).have}/${r.ing.length}</span>` : ""}
+      <div class="meta"><span>⏱ ${fmtMin(r.totalMin)}${r.advance.length ? " + soak" : ""}</span><span>🔪 ${fmtMin(r.activeMin)} hands-on</span><span title="estimated per serving">🔥 ${r.nut.kcal} kcal</span><span title="protein per serving">💪 ${r.nut.p} g</span>${hasPantry ? `<span title="ingredients you have">🏠 ${coverage(r).have}/${r.ing.length}</span>` : ""}
         ${terms.length > 1 ? `<span>✓ ${match}/${terms.length}</span>` : ""}</div>
     </div>`).join("") : `<div class="empty">No recipes match. Try fewer filters.</div>`;
   $$("#grid [data-open]").forEach((el) => el.addEventListener("click", () => openRecipe(el.dataset.open)));
@@ -428,6 +453,7 @@ function openRecipe(id, scaleServings) {
       <div class="stat"><div class="k">Hands-off</div><div class="v">${fmtMin(r.totalMin - r.activeMin)}</div></div>
       <div class="stat"><div class="k">Servings</div><div class="v row" style="gap:6px">
         <button class="btn sm" id="sv-minus">−</button><span id="sv">${servings}</span><button class="btn sm" id="sv-plus">+</button></div></div>
+      <div class="stat" title="Estimated from the ingredients (±15%)${r.side ? `; add ~${SIDES[r.side].kcal} kcal for the ${SIDES[r.side].label} it's served with` : ""}"><div class="k">Per serving (est.)</div><div class="v">🔥 ${r.nut.kcal} kcal · 💪 ${r.nut.p} g protein</div><div class="small muted">C ${r.nut.c} g · F ${r.nut.f} g${r.side ? ` · + ${SIDES[r.side].label}` : ""}</div></div>
       <div class="stat"><div class="k">Keeps</div><div class="v">${r.store.fridge ? `${r.store.fridge}d fridge` : "eat fresh"}${r.store.freeze ? ` · ${r.store.freeze}mo freezer` : ""}</div></div>
     </div>
     ${r.advance.length ? `<div class="box amber">🌙 <b>Plan ahead:</b> ${r.advance.map((s) => esc(s.t)).join(" ")}</div>` : ""}
@@ -591,8 +617,299 @@ function renderJournal() {
   $("#bk-import").onchange = (e) => e.target.files[0] && importBackup(e.target.files[0]);
 }
 
+// ───────────── GOALS: calorie-target planner (weight gain / maintain) ─────────────
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const ADDON = Object.fromEntries((window.ADDONS || []).map((a) => [a.id, a]));
+function defaultGoals() {
+  return {
+    profile: { sex: "male", age: 25, height: 175, weight: 65, activity: 1.55, goal: 400, custom: 0, proteinPerKg: 1.8 },
+    schedule: DAYS.map((d, i) => i < 5
+      ? { cook: 20, train: [0, 2, 4].includes(i), trainAt: "18:00", wake: "07:00", b: "home", l: "packed", d: "home" }
+      : { cook: 120, train: i === 5, trainAt: "10:30", wake: "09:00", b: "home", l: "home", d: "home" }),
+    prefs: { maxDiff: 2, veg: false, extraTrainKcal: 150, week: "this", replace: true },
+    result: null, weighIns: [],
+  };
+}
+const goals = () => state.goals || (state.goals = defaultGoals());
+const toMin = (t) => { const [h, m] = String(t || "12:00").split(":").map(Number); return h * 60 + m; };
+const hhmm = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(Math.round(m) % 60).padStart(2, "0")}`;
+function calcTargets(p = goals().profile) {
+  const bmr = Math.round(10 * p.weight + 6.25 * p.height - 5 * p.age + (p.sex === "male" ? 5 : -161)); // Mifflin–St Jeor
+  const tdee = Math.round(bmr * p.activity);
+  const target = +p.custom > 0 ? +p.custom : tdee + +p.goal;
+  return { bmr, tdee, target, protein: Math.round(p.weight * p.proteinPerKg), perWeek: Math.round(((target - tdee) * 7 / 7700) * 100) / 100 };
+}
+const dayTarget = (i) => calcTargets().target + (goals().schedule[i].train ? +goals().prefs.extraTrainKcal : 0);
+const isMain = (r) => r.country !== "Basics" && r.nut.kcal >= 250 && !r.tags.some((t) => ["condiment", "dip"].includes(t));
+const sideKcal = (r) => (r.side ? SIDES[r.side].kcal : 0);
+const portionFor = (r, target) => Math.min(2.5, Math.max(0.75, Math.round(((target - sideKcal(r)) / r.nut.kcal) * 4) / 4));
+const mealKcal = (r, m) => Math.round(r.nut.kcal * m + sideKcal(r));
+const mealP = (r, m) => Math.round(r.nut.p * m + (r.side ? SIDES[r.side].p : 0));
+
+// The builder: batch-cook on days with time, eat leftovers on busy days, quick cooks where there's a little time,
+// size portions to the calorie target, then close each day's gap with snacks timed around training.
+function buildWeek() {
+  const G = goals(), P = G.prefs;
+  state.weekOffset = P.week === "next" ? 1 : 0;
+  const dates = weekDates(), today = ymd(new Date());
+  const days = dates.map((date, i) => ({ date, i, s: G.schedule[i], target: dayTarget(i), active: date >= today }));
+  const slots = [];
+  for (const d of days) if (d.active) {
+    if (d.s.l !== "out") slots.push({ d, meal: "lunch" });
+    if (d.s.d !== "out") slots.push({ d, meal: "dinner" });
+  }
+  const pool = RECIPES.filter((r) => isMain(r) && r.difficulty <= +P.maxDiff && (!P.veg || r.tags.some((t) => t.startsWith("veg"))));
+  const usedR = new Set(), usedC = new Set();
+  const score = (r) => (r.nut.p / r.nut.kcal) * 100 + (r.tags.includes("batch") ? 2 : 0) + (r.store.freeze ? 1 : 0) + Math.random() * 3 - (usedC.has(r.country) ? 4 : 0);
+  const choose = (ok) => {
+    const c = pool.filter((r) => !usedR.has(r.id) && ok(r)).sort((a, b) => score(b) - score(a))[0];
+    if (c) { usedR.add(c.id); usedC.add(c.country); }
+    return c;
+  };
+  const assign = new Map(), key = (s) => s.d.date + s.meal;
+  const entries = [], sessions = [], notes = [];
+  const mealTarget = (d) => Math.round(d.target * 0.32); // lunch & dinner ≈ 32% each; breakfast + snacks fill the rest
+
+  // 1) batch-cook days (≥ 60 min free) cover the following days until the next batch day
+  let batchDays = days.filter((d) => d.active && d.s.cook >= 60);
+  if (!batchDays.length) {
+    const best = days.filter((d) => d.active).sort((a, b) => b.s.cook - a.s.cook)[0];
+    if (best && best.s.cook >= 30) batchDays = [best];
+    else notes.push("No day has 30+ minutes to cook, so there is no batch-cook session. Give at least one day 60+ minutes for the plan to work well.");
+  }
+  batchDays.forEach((b, bi) => {
+    const end = bi + 1 < batchDays.length ? batchDays[bi + 1].i : 7;
+    const win = slots.filter((s) => s.d.i >= b.i && s.d.i < end && !assign.has(key(s)));
+    const groups = [win.filter((s) => s.meal === "lunch"), win.filter((s) => s.meal === "dinner")].filter((g) => g.length);
+    const cooked = [];
+    for (const g of groups) {
+      const span = g[g.length - 1].d.i - b.i + 1;
+      const r = choose((r) => r.servings >= 4 && r.activeMin <= b.s.cook * 0.6 && r.totalMin <= b.s.cook * 2 && (r.store.fridge >= Math.min(span, 4) || r.store.freeze > 0));
+      if (!r) continue;
+      const m = portionFor(r, mealTarget(b));
+      const cook = { id: uid(), date: b.date, meal: "prep", recipeId: r.id, servings: 0, type: "cook", eat: 0, side: r.side, gp: true };
+      entries.push(cook);
+      let frozen = 0;
+      for (const s of g) {
+        const age = s.d.i - b.i;
+        const type = age < r.store.fridge ? "leftover" : r.store.freeze ? "freezer" : null;
+        if (!type) continue;
+        if (type === "freezer") frozen++;
+        cook.servings += m;
+        entries.push({ id: uid(), date: s.d.date, meal: s.meal, recipeId: r.id, servings: m, eat: m, type, parent: cook.id, side: r.side, gp: true });
+        assign.set(key(s), { r, m });
+      }
+      cook.servings = Math.ceil(cook.servings * 2) / 2;
+      cook.frozen = frozen;
+      cooked.push(r);
+    }
+    if (cooked.length) {
+      const sched = schedule(cooked);
+      sessions.push({ date: b.date, start: Math.max(toMin(b.s.wake) + 150, 10 * 60), minutes: Math.max(...sched.map((x) => x.end)),
+        handsOn: cooked.reduce((a, r) => a + r.activeMin, 0), recipes: cooked.map((r) => r.id),
+        frozen: entries.filter((e) => e.date === b.date && e.meal === "prep" && e.frozen).map((e) => `${e.frozen} portion(s) of ${BY_ID[e.recipeId].name}`) });
+    }
+  });
+  // 2) days with a little time: one quick fresh dinner (+ tomorrow's packed lunch if it keeps)
+  for (const d of days.filter((d) => d.active && d.s.cook >= 15)) {
+    const target = slots.find((s) => s.d === d && s.meal === "dinner" && !assign.has(key(s))) || slots.find((s) => s.d === d && s.meal === "lunch" && !assign.has(key(s)));
+    if (!target) continue;
+    const r = choose((r) => r.totalMin <= Math.max(d.s.cook, 20) && r.activeMin <= Math.max(d.s.cook, 15));
+    if (!r) continue;
+    const next = slots.find((s) => s.d.i === d.i + 1 && s.meal === "lunch" && !assign.has(key(s)));
+    const m = portionFor(r, mealTarget(d));
+    const extra = next && r.store.fridge >= 2 ? m : 0;
+    const cook = { id: uid(), date: d.date, meal: target.meal, recipeId: r.id, servings: Math.ceil((m + extra) * 2) / 2, eat: m, type: "cook", side: r.side, gp: true };
+    entries.push(cook); assign.set(key(target), { r, m });
+    if (extra) { entries.push({ id: uid(), date: next.d.date, meal: "lunch", recipeId: r.id, servings: m, eat: m, type: "leftover", parent: cook.id, side: r.side, gp: true }); assign.set(key(next), { r, m }); }
+  }
+  // 3) any meal still open: pull a frozen portion from an earlier batch cook
+  for (const s of slots.filter((s) => !assign.has(key(s)))) {
+    const src = entries.find((e) => e.type === "cook" && e.meal === "prep" && e.date <= s.d.date && BY_ID[e.recipeId].store.freeze);
+    if (!src) { notes.push(`${DAYS[s.d.i]} ${s.meal}: nothing planned (no cooking time and nothing in the freezer). Eat out, or give that day a little cooking time.`); continue; }
+    const r = BY_ID[src.recipeId], m = portionFor(r, mealTarget(s.d));
+    src.servings += m;
+    entries.push({ id: uid(), date: s.d.date, meal: s.meal, recipeId: r.id, servings: m, eat: m, type: "freezer", parent: src.id, side: r.side, gp: true });
+    assign.set(key(s), { r, m });
+  }
+
+  // 4) day-by-day timeline with calories, snacks and timing around training
+  const T = calcTargets();
+  const out = days.map((d) => {
+    if (!d.active) return { date: d.date, past: true };
+    const s = d.s, wake = toMin(s.wake), train = s.train ? toMin(s.trainAt) : null;
+    const items = [];
+    const add = (time, kind, label, kcal = 0, p = 0, extra = {}) => items.push({ time, kind, label, kcal, p, ...extra });
+    if (s.b !== "skip") {
+      const bf = s.cook <= 20 ? ADDON.oats : d.i % 2 ? ADDON["eggs-toast"] : ADDON["yogurt-bowl"];
+      add(wake + 30, "breakfast", bf.name, bf.kcal, bf.p, { addon: bf.id });
+    }
+    let lunchT = 12 * 60 + 30, dinnerT = 19 * 60;
+    if (train && train >= 16 * 60 && train <= 20 * 60) dinnerT = train + 90;   // eat within ~1 h after finishing
+    if (train && train >= 11 * 60 && train < 14 * 60) lunchT = train + 90;
+    for (const meal of ["lunch", "dinner"]) {
+      const a = assign.get(d.date + meal), t = meal === "lunch" ? lunchT : dinnerT;
+      const where = meal === "lunch" ? s.l : s.d;
+      if (a) add(t, meal, `${a.r.name} × ${a.m} serving${a.m === 1 ? "" : "s"}${a.r.side ? ` + 1 ${SIDES[a.r.side].label}` : ""}${where === "packed" ? " (packed)" : ""}`, mealKcal(a.r, a.m), mealP(a.r, a.m), { recipe: a.r.id });
+      else if (where === "out") add(t, meal, "Eating out: choose a protein-rich dish with rice or bread", 800, 35, { out: true });
+    }
+    if (train) {
+      add(train, "train", "Training");
+      if (train - 90 > wake + 90) add(train - 90, "snack", `${ADDON.banana.name} (pre-workout)`, ADDON.banana.kcal, ADDON.banana.p);
+    }
+    const sess = sessions.find((x) => x.date === d.date);
+    if (sess) add(sess.start, "cook", `Batch cook: ${sess.recipes.map((id) => BY_ID[id].name).join(" + ")} (about ${fmtMin(sess.minutes)}, ${fmtMin(sess.handsOn)} hands-on)${sess.frozen.length ? `. Freeze ${sess.frozen.join(", ")}` : ""}`, 0, 0, { session: true });
+    const quick = entries.find((e) => e.date === d.date && e.type === "cook" && e.meal !== "prep");
+    if (quick) { const r = BY_ID[quick.recipeId]; add((quick.meal === "dinner" ? dinnerT : lunchT) - r.totalMin - 5, "cook", `Cook ${r.name} (${fmtMin(r.totalMin)})${quick.servings > quick.eat ? ", and pack tomorrow’s lunch" : ""}`, 0, 0, { recipe: r.id }); }
+    let total = items.reduce((a, x) => a + x.kcal, 0);
+    const snackIds = s.train ? ["gainer", "milk", "trail-mix", "pb-toast", "yogurt-bowl", "olive-oil"] : ["trail-mix", "milk", "pb-toast", "yogurt-bowl", "gainer", "olive-oil"];
+    const snackTimes = [lunchT + 180, dinnerT + 150, wake + 210];
+    let n = 0;
+    for (const id of snackIds) {
+      const gap = d.target - total;
+      if (gap < 150 || n >= 3) break;
+      const a = ADDON[id];
+      if (a.kcal > gap + 150) continue;
+      add(id === "gainer" && train ? train + 75 : snackTimes[n], "snack", a.name, a.kcal, a.p, { addon: id });
+      total += a.kcal; n++;
+    }
+    items.sort((x, y) => x.time - y.time);
+    return { date: d.date, items, kcal: total, p: items.reduce((a, x) => a + x.p, 0), target: d.target, ptarget: T.protein, train: !!s.train };
+  });
+  // night-before reminders: overnight oats, soaking beans
+  out.forEach((d, i) => {
+    const prev = out[i - 1];
+    if (!prev || prev.past || d.past) return;
+    if (d.items.some((x) => x.addon === "oats")) prev.items.push({ time: 21 * 60 + 30, kind: "prep", label: "Make overnight oats for tomorrow (2 min)", kcal: 0, p: 0 });
+    const sess = sessions.find((x) => x.date === d.date);
+    for (const id of sess?.recipes || []) for (const st of BY_ID[id].advance) prev.items.push({ time: 21 * 60, kind: "prep", label: `For tomorrow’s ${BY_ID[id].name}: ${st.t}`, kcal: 0, p: 0 });
+    prev.items.sort((x, y) => x.time - y.time);
+  });
+  const lowP = out.filter((d) => !d.past && d.p < d.ptarget - 20);
+  if (lowP.length) notes.push(`Protein is short on ${lowP.map((d) => DAYS[dates.indexOf(d.date)]).join(", ")}. Swap a snack for Greek yogurt or the gainer smoothie, or add 2 eggs.`);
+
+  // write to the meal plan
+  if (P.replace) state.plan = state.plan.filter((p) => !(dates.includes(p.date) && p.date >= today));
+  state.plan.push(...entries);
+  G.result = { week: dates[0], days: out, sessions, notes, built: ymd(new Date()) };
+  save();
+}
+
+function renderGoals() {
+  const G = goals(), p = G.profile, T = calcTargets(), P = G.prefs;
+  const sel = (id, val, opts) => `<select data-g="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  const R = G.result;
+  $("#view").innerHTML = `
+    <h1>Goals</h1>
+    <p class="sub">Set a calorie target (for example, to gain weight) and your week. The builder tells you what to cook, on which day, how big each portion is, and what to eat around training to hit your numbers.</p>
+    <div class="two" style="grid-template-columns:1fr 1fr">
+      <div class="card"><h3>1 · Your target</h3>
+        <div class="row">
+          <label class="field">Sex ${sel("profile.sex", p.sex, [["male", "Male"], ["female", "Female"]])}</label>
+          <label class="field">Age <input type="number" data-g="profile.age" value="${p.age}" style="width:70px"></label>
+          <label class="field">Height (cm) <input type="number" data-g="profile.height" value="${p.height}" style="width:80px"></label>
+          <label class="field">Weight (kg) <input type="number" step="0.1" data-g="profile.weight" value="${p.weight}" style="width:80px"></label>
+        </div>
+        <label class="field">Activity ${sel("profile.activity", p.activity, [[1.2, "Mostly sitting, little exercise"], [1.375, "Light: 1–3 workouts a week"], [1.55, "Moderate: 3–5 workouts a week"], [1.725, "Very active: 6–7 workouts or a physical job"]])}</label>
+        <div class="row">
+          <label class="field">Goal ${sel("profile.goal", p.goal, [[0, "Maintain weight"], [250, "Lean gain (+250 kcal)"], [400, "Steady gain (+400 kcal)"], [550, "Faster gain (+550 kcal)"]])}</label>
+          <label class="field">Protein ${sel("profile.proteinPerKg", p.proteinPerKg, [[1.6, "1.6 g/kg"], [1.8, "1.8 g/kg"], [2, "2.0 g/kg"], [2.2, "2.2 g/kg"]])}</label>
+          <label class="field">Or set kcal yourself <input type="number" data-g="profile.custom" value="${p.custom || ""}" placeholder="auto" style="width:90px"></label>
+        </div>
+        <div class="summary">
+          <div class="stat"><div class="k">Maintenance (est.)</div><div class="v">${T.tdee} kcal</div></div>
+          <div class="stat"><div class="k">Daily target</div><div class="v" style="color:var(--accent)">${T.target} kcal</div><div class="small muted">+${P.extraTrainKcal} on training days</div></div>
+          <div class="stat"><div class="k">Protein</div><div class="v">${T.protein} g</div></div>
+          <div class="stat"><div class="k">Expected change</div><div class="v">${T.perWeek > 0 ? "+" : ""}${T.perWeek} kg/wk</div></div>
+        </div>
+        <p class="small muted">Estimates (Mifflin–St Jeor formula). Bodies vary, so weigh in weekly below and adjust. This isn't medical advice. If you have a health condition, check with a professional.</p>
+      </div>
+      <div class="card"><h3>2 · Preferences</h3>
+        <label class="field">Hardest recipes to include ${sel("prefs.maxDiff", P.maxDiff, [[1, "Beginner only"], [2, "Up to intermediate"], [3, "Anything"]])}</label>
+        <label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>
+        <label class="row small"><input type="checkbox" data-g="prefs.veg" ${P.veg ? "checked" : ""}> Vegetarian only</label>
+        <label class="field" style="margin-top:12px">Build for ${sel("prefs.week", P.week, [["this", "This week (from today)"], ["next", "Next week"]])}</label>
+        <label class="row small"><input type="checkbox" data-g="prefs.replace" ${P.replace ? "checked" : ""}> Replace meals already planned that week</label>
+        <button class="btn primary" id="g-build" style="margin-top:14px">✨ Build my week</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;overflow-x:auto"><h3>3 · Your week</h3>
+      <p class="small muted" style="margin-top:0">How much time you have to cook each day decides when you batch-cook (60+ min), cook something quick (15–45 min), or just eat leftovers.</p>
+      <table class="sched"><tr><th></th><th>Time to cook</th><th>Wake</th><th>Training</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>
+      ${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th>
+        <td>${sel(`schedule.${i}.cook`, s.cook, [[0, "None"], [15, "15 min"], [20, "20 min"], [30, "30 min"], [45, "45 min"], [60, "1 h"], [90, "1.5 h"], [120, "2 h"], [180, "3 h+"]])}</td>
+        <td><input type="time" data-g="schedule.${i}.wake" value="${s.wake}"></td>
+        <td><label class="row small" style="gap:4px"><input type="checkbox" data-g="schedule.${i}.train" ${s.train ? "checked" : ""}> <input type="time" data-g="schedule.${i}.trainAt" value="${s.trainAt}" ${s.train ? "" : "disabled"}></label></td>
+        <td>${sel(`schedule.${i}.b`, s.b, [["home", "At home"], ["skip", "Skip"]])}</td>
+        <td>${sel(`schedule.${i}.l`, s.l, [["home", "At home"], ["packed", "Packed"], ["out", "Eat out"]])}</td>
+        <td>${sel(`schedule.${i}.d`, s.d, [["home", "At home"], ["out", "Eat out"]])}</td></tr>`).join("")}</table>
+    </div>
+    <div id="g-result">${R ? renderGoalResult(R) : ""}</div>
+    <div class="card" style="margin-top:16px"><h3>⚖️ Weekly weigh-in</h3>
+      <p class="small muted" style="margin-top:0">Weigh yourself once a week, same day and time (for example, Monday morning before breakfast). After 2+ weeks the app suggests whether to adjust.</p>
+      <div class="row"><input type="date" id="w-date" value="${ymd(new Date())}"><input type="number" step="0.1" id="w-kg" placeholder="kg" style="width:90px"><button class="btn" id="w-add">Add</button></div>
+      ${weighInSummary()}
+    </div>`;
+  $$("[data-g]").forEach((el) => el.onchange = () => {
+    const path = el.dataset.g.split(".");
+    let o = G; for (const k of path.slice(0, -1)) o = o[k];
+    const last = path[path.length - 1];
+    o[last] = el.type === "checkbox" ? el.checked : el.type === "number" || /^(activity|goal|proteinPerKg|cook|maxDiff)$/.test(last) ? +el.value : el.value;
+    if (last === "weight" && +el.value > 0) o.weight = +el.value;
+    save(); renderGoals();
+  });
+  $("#g-build").onclick = () => { buildWeek(); renderGoals(); $("#g-result").scrollIntoView({ behavior: "smooth" }); };
+  $("#w-add").onclick = () => {
+    const kg = +$("#w-kg").value; if (!kg) return;
+    G.weighIns = (G.weighIns || []).filter((w) => w.date !== $("#w-date").value).concat({ date: $("#w-date").value, kg }).sort((a, b) => a.date.localeCompare(b.date));
+    G.profile.weight = kg; save(); renderGoals();
+  };
+  if ($("#w-apply")) $("#w-apply").onclick = () => { G.profile.custom = 0; G.profile.goal = +G.profile.goal + +$("#w-apply").dataset.delta; save(); renderGoals(); };
+  $$("#g-result [data-open]").forEach((el) => el.onclick = () => openRecipe(el.dataset.open));
+  $$("[data-prepsess]").forEach((b) => b.onclick = () => { prepSelection = b.dataset.prepsess.split(","); location.hash = "#prep"; });
+}
+
+function renderGoalResult(R) {
+  const icon = { breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️" };
+  const live = R.days.filter((d) => !d.past);
+  const avg = live.length ? Math.round(live.reduce((a, d) => a + d.kcal, 0) / live.length) : 0;
+  return `
+    <h2>Your plan for the week of ${dayLabel(parseYmd(R.week))}</h2>
+    <div class="row"><a class="btn" href="#plan">📅 See it in the meal plan</a><a class="btn" href="#shop">🛒 Grocery list</a><span class="muted small">Average ≈ ${avg} kcal/day</span></div>
+    ${R.notes.length ? `<div class="box amber small">${R.notes.map(esc).join("<br>")}</div>` : ""}
+    ${R.sessions.length ? `<h3 style="margin-top:18px">🔥 When to cook</h3>${R.sessions.map((s) => `<div class="box green"><b>${dayLabel(parseYmd(s.date))}, ${hhmm(s.start)} to ${hhmm(s.start + s.minutes)}</b>: ${s.recipes.map((id) => `<a href="#" data-open="${id}">${BY_ID[id].name}</a>`).join(" + ")}
+      <span class="small muted">(${fmtMin(s.minutes)} cooked together, ${fmtMin(s.handsOn)} hands-on)</span>${s.frozen.length ? `<div class="small">🧊 Freeze: ${s.frozen.map(esc).join(", ")}</div>` : ""}
+      <div><button class="btn sm" data-prepsess="${s.recipes.join(",")}" style="margin-top:6px">⏱ Step-by-step session timeline</button></div></div>`).join("")}` : ""}
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-top:16px">
+    ${R.days.map((d) => d.past ? "" : `<div class="card">
+      <div class="row"><b>${dayLabel(parseYmd(d.date))}</b>${d.train ? `<span class="chip diff-2">training day</span>` : ""}<span class="spacer"></span><span class="small"><b>${d.kcal}</b> / ${d.target} kcal</span></div>
+      <div class="bar"><div style="width:${Math.min(100, (d.kcal / d.target) * 100)}%;background:${Math.abs(d.kcal - d.target) <= 150 ? "var(--green)" : "var(--amber)"}"></div></div>
+      <div class="small muted">💪 Protein ${d.p} / ${d.ptarget} g</div>
+      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}"><span class="time">${hhmm(x.time)}</span> ${icon[x.kind] || "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
+    </div>`).join("")}</div>
+    <div class="box blue small" style="margin-top:12px"><b>Tips for gaining:</b> eat every 3–4 hours rather than forcing huge meals. Drink some of your calories (milk, smoothies) if you get full easily. Keep a protein source in every meal. If the scale hasn't moved after 2 weeks, add about 150 kcal a day.</div>`;
+}
+
+function weighInSummary() {
+  const W = goals().weighIns || [];
+  if (!W.length) return `<p class="muted small">No weigh-ins yet.</p>`;
+  let advice = "";
+  if (W.length >= 2) {
+    const first = W[Math.max(0, W.length - 5)], last = W[W.length - 1];
+    const weeks = Math.max(1, (parseYmd(last.date) - parseYmd(first.date)) / (7 * 864e5));
+    const rate = Math.round(((last.kg - first.kg) / weeks) * 100) / 100;
+    const goal = +goals().profile.goal;
+    let delta = 0, msg = `You're changing by ${rate > 0 ? "+" : ""}${rate} kg/week.`;
+    if (goal > 0 && rate < 0.1 && weeks >= 2) { delta = 150; msg += " That's slower than planned. Add about 150 kcal a day."; }
+    else if (goal > 0 && rate > 0.6) { delta = -150; msg += " That's faster than needed (more of it may be fat). Remove about 150 kcal a day."; }
+    else msg += " On track. Keep going.";
+    advice = `<div class="box ${delta ? "amber" : "green"} small">${msg}${delta ? ` <button class="btn sm" id="w-apply" data-delta="${delta}">Apply ${delta > 0 ? "+" : ""}${delta} kcal</button>` : ""}</div>`;
+  }
+  return `${advice}<div class="row" style="margin-top:8px">${W.slice(-8).map((w) => `<span class="chip">${w.date.slice(5)}: ${w.kg} kg</span>`).join("")}</div>`;
+}
+
 // ───────────── BACKUP / RESTORE ─────────────
-const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry"];
+const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals"];
 function exportBackup() {
   const data = { app: "world-kitchen", version: 1, exported: new Date().toISOString(), prepStart: store.get("prepStart", "10:00") };
   for (const k of BACKUP_KEYS) data[k] = state[k];
@@ -739,7 +1056,7 @@ function renderPlan() {
   const dates = weekDates(), today = ymd(new Date());
   const inWeek = state.plan.filter((p) => dates.includes(p.date));
   const cooks = inWeek.filter((p) => p.type === "cook");
-  const meals = inWeek.length;
+  const meals = inWeek.filter((p) => p.meal !== "prep").length;
   const handsOn = cooks.reduce((a, p) => a + BY_ID[p.recipeId].activeMin, 0);
   const total = cooks.reduce((a, p) => a + BY_ID[p.recipeId].totalMin, 0);
   const ws = weekStart();
@@ -763,12 +1080,13 @@ function renderPlan() {
     </div>
     <div class="week">
       <div></div>${dates.map((d) => `<div class="h ${d === today ? "today" : ""}">${dayLabel(parseYmd(d))}</div>`).join("")}
-      ${MEALS.map((m) => `<div class="lbl">${m[0].toUpperCase() + m.slice(1)}</div>${dates.map((d) => `<div class="cell">
+      ${(inWeek.some((p) => p.meal === "prep") ? ["prep", ...MEALS] : MEALS).map((m) => `<div class="lbl">${m === "prep" ? "Batch cook" : m[0].toUpperCase() + m.slice(1)}</div>${dates.map((d) => `<div class="cell ${m === "prep" ? "prep-cell" : ""}">
         ${slotEntries(d, m).map((p) => { const r = BY_ID[p.recipeId]; return `<div class="entry ${p.type}" data-open="${r.id}">
           <button class="x" data-rm="${p.id}" title="Remove">×</button>
-          ${p.type === "cook" ? "🔥 Cook" : p.type === "leftover" ? "♻️ Leftover" : "🧊 Freezer"}: <b>${r.flag} ${r.name}</b>
-          ${p.type === "cook" ? `<div class="muted">${p.servings} servings · ${fmtMin(r.activeMin)} hands-on</div>` : ""}</div>`; }).join("")}
-        <button class="add-slot" data-add="${d}|${m}">+</button></div>`).join("")}`).join("")}
+          ${p.type === "cook" ? "🔥 Cook" : p.type === "leftover" ? (p.gp ? "🍱 From batch" : "♻️ Leftover") : "🧊 Freezer"}: <b>${r.flag} ${r.name}</b>
+          ${p.type === "cook" ? `<div class="muted">${p.servings} servings · ${fmtMin(r.activeMin)} hands-on</div>` : ""}
+          ${p.eat ? `<div class="muted">eat ×${p.eat}${p.side ? ` + ${SIDES[p.side].label}` : ""} ≈ ${mealKcal(r, p.eat)} kcal</div>` : ""}</div>`; }).join("")}
+        ${m === "prep" ? "" : `<button class="add-slot" data-add="${d}|${m}">+</button>`}</div>`).join("")}`).join("")}
     </div>
     <div class="row" style="margin-top:16px">
       <a class="btn" href="#shop">🛒 Grocery list for this week</a>

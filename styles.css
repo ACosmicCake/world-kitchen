@@ -201,3 +201,16 @@ a.ing-link { color: inherit; text-decoration: underline dotted var(--accent); te
 a.ing-link:hover { color: var(--accent); }
 .badge-src { font-size: 11px; background: var(--blue-soft); color: var(--blue); padding: 2px 8px; border-radius: 999px; font-weight: 700; }
 @media (max-width: 640px) { .ing-hero { grid-template-columns: 1fr; } }
+
+/* goals */
+table.sched { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.sched th, table.sched td { padding: 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+table.sched select, table.sched input { padding: 4px 6px; font-size: 13px; }
+ul.tl { list-style: none; padding: 0; margin: 10px 0 0; font-size: 13px; }
+ul.tl li { padding: 5px 0; border-bottom: 1px dashed var(--line); }
+ul.tl .time { font-family: ui-monospace, monospace; font-weight: 700; margin-right: 6px; }
+ul.tl li.k-cook { color: var(--accent); font-weight: 600; }
+ul.tl li.k-train { color: var(--blue); font-weight: 600; }
+ul.tl li.k-prep { color: var(--muted); font-style: italic; }
+ul.tl a { color: inherit; }
+.prep-cell { background: #fff8f4; }

@@ -1,9 +1,9 @@
 // Service worker: makes World Kitchen work fully offline after the first visit.
 // When you change any app file, bump VERSION so devices pick up the new copy.
-const VERSION = "wk-v6";
+const VERSION = "wk-v7";
 const APP_SHELL = [
   "./", "./index.html", "./styles.css", "./app.js",
-  "./data/recipes.js", "./data/extra-recipes.js", "./data/ingredients.js", "./data/sources.js",
+  "./data/recipes.js", "./data/extra-recipes.js", "./data/ingredients.js", "./data/nutrition.js", "./data/sources.js",
   "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
 ];
 
