@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>World Kitchen — Cookbook & Meal Planner</title>
+  <meta name="theme-color" content="#c8553d" />
+  <meta name="description" content="Authentic world recipes, batch-cooking planner, grocery list, pantry and cooking skills." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="World Kitchen" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🌏 <span>World Kitchen</span></div>
+    <nav id="tabs">
+      <a href="#discover" data-tab="discover">Discover</a>
+      <a href="#plan" data-tab="plan">Plan</a>
+      <a href="#shop" data-tab="shop">Shop</a>
+      <a href="#pantry" data-tab="pantry">Pantry</a>
+      <a href="#prep" data-tab="prep">Batch Prep</a>
+      <a href="#skills" data-tab="skills">Skills</a>
+      <a href="#journal" data-tab="journal">Journal</a>
+    </nav>
+    <div class="appstatus">
+      <span id="net" class="chip" title="Connection status"></span>
+      <button id="install" class="btn sm primary hidden">⬇ Install app</button>
+    </div>
+  </header>
+
+  <main id="view"></main>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" id="modal-card"></div>
+  </div>
+
+  <div id="cookmode" class="cookmode hidden"></div>
+  <div id="timers" class="timers"></div>
+
+  <script src="data/sources.js"></script>
+  <script src="data/recipes.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

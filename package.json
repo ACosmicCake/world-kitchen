@@ -1,0 +1,10 @@
+{
+  "name": "world-kitchen",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Authentic world cookbook, batch-cooking planner, grocery list and pantry. Works offline.",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "icons": "node tools/make-icons.js"
+  }
+}
