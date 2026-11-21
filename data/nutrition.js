@@ -3,6 +3,22 @@
 // Row: [match names (longest substring wins), kcal, protein g, carbs g, fat g, grams per piece (for "2 onions"), density g/ml (for tbsp/ml)]
 window.NUTRITION = [
 // fats & oils
+[["quail eggs", "quail egg"], 158, 13, 0.4, 11, 10],
+[["rice crackers", "sesame rice crackers"], 400, 8, 80, 5, 30],
+[["mì quảng noodles", "wide rice noodles"], 150, 3, 33, 0.5],
+[["pork hock", "chân giò"], 140, 10, 0, 11],
+[["blood cubes", "huyết"], 80, 17, 0, 0.5],
+[["pork paste", "giò sống"], 200, 15, 2, 14],
+[["pork chops", "sườn"], 200, 18, 0, 14],
+[["minced pork"], 250, 17, 0, 20],
+[["catfish", "basa", "snakehead"], 95, 16, 0, 3.5],
+[["whole chicken"], 120, 12, 0, 8],
+[["chicken bones", "chicken carcasses"], 30, 3, 0, 2],
+[["chicken"], 140, 14, 0, 9],
+[["wood ear"], 300, 10, 65, 1, 0, 0.5],
+[["bouillon"], 250, 10, 30, 10, 0, 0.9],
+[["brandy"], 230, 0, 0, 0, 0, 1],
+[["annatto oil"], 884, 0, 0, 100, 0, 0.92],
 [["oil", "olive oil", "neutral oil", "vegetable oil", "sesame oil", "coconut oil", "dendê", "groundnut oil", "lard or oil", "oil or ghee", "ghee or oil", "pork lard or vegetable oil", "olive oil or butter"], 884, 0, 0, 100, 0, 0.92],
 [["ghee"], 900, 0, 0, 100, 0, 0.91],
 [["butter"], 717, 0.9, 0.1, 81, 0, 0.95],
@@ -106,7 +122,7 @@ window.NUTRITION = [
 [["vinegar"], 18, 0, 0.1, 0, 0, 1],
 [["wine", "burgundy"], 85, 0, 2.6, 0, 0, 1],
 [["sake", "shaoxing", "rice wine"], 134, 0.5, 5, 0, 0, 1],
-[["stock", "broth", "dashi"], 7, 1, 0.5, 0.2, 10, 1],
+[["stock", "broth", "dashi", "chicken stock", "vegetable stock", "beef stock"], 7, 1, 0.5, 0.2, 10, 1],
 [["water", "ice"], 0, 0, 0, 0, 0, 1],
 [["tomato passata", "tomato purée"], 35, 1.6, 6, 0.2, 0, 1.05],
 [["tomato paste"], 82, 4.3, 19, 0.5, 0, 1.1],
@@ -160,7 +176,7 @@ window.NUTRITION = [
 [["okra"], 33, 1.9, 7, 0.2, 12],
 [["radishes"], 16, 0.7, 3.4, 0.1, 10],
 [["daikon"], 18, 0.6, 4, 0.1, 500],
-[["scallion", "scallions", "green onion", "garlic chives", "chives"], 32, 1.8, 7, 0.2, 15],
+[["scallion", "scallions", "green onion", "spring onion", "garlic chives", "chives"], 32, 1.8, 7, 0.2, 15],
 [["lemongrass"], 99, 1.8, 25, 0.5, 20],
 [["preserved lemon"], 30, 1, 6, 0.3, 100],
 [["dried limes"], 250, 5, 60, 1, 5],
@@ -169,7 +185,7 @@ window.NUTRITION = [
 [["herbs", "cilantro", "basil", "mint", "parsley", "perilla", "bạc hà", "coriander"], 25, 2.5, 4, 0.5, 0],
 ];
 // Only part of some lines is actually eaten: frying oil you pour off, dipping sauce left in the bowl.
-window.EATEN_FRACTION = [[/for frying|reusable|deep[- ]?fry/i, 0.3], [/dipping|\bdip\b/i, 0.4]];
+window.EATEN_FRACTION = [[/for frying|deep[- ]?fry/i, 0.12], [/reusable/i, 0.3], [/dipping|\bdip\b/i, 0.4]];
 // grams for one unit (× density for liquids)
 window.UNIT_GRAMS = { g: 1, kg: 1000, ml: 1, L: 1000, tbsp: 15, tsp: 5, cup: 240, clove: 5, bunch: 40, handful: 25, pinch: 0.3, sprig: 1, slice: 5, stalk: 40, bowl: 200, box: 100, can: 400 };
 window.LIQUID_UNITS = ["ml", "L", "tbsp", "tsp", "cup"];

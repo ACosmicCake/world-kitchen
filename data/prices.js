@@ -3,6 +3,10 @@
 // and override any ingredient with what you actually pay.
 // Row: [match names (longest substring wins), USD per kg]
 window.PRICES = [
+[["quail eggs", "quail egg"], 12], [["rice crackers", "sesame rice crackers"], 10], [["mì quảng noodles", "wide rice noodles"], 5],
+[["pork hock", "chân giò"], 6], [["blood cubes", "huyết"], 4], [["pork paste", "giò sống"], 10], [["pork chops", "sườn"], 8], [["minced pork"], 8],
+[["catfish", "basa", "snakehead"], 9], [["whole chicken"], 5], [["chicken bones", "chicken carcasses"], 3], [["chicken"], 6],
+[["wood ear"], 30], [["bouillon"], 15], [["brandy"], 25], [["annatto"], 20], [["turmeric"], 10], [["shallot"], 8],
 [["oil", "neutral oil", "vegetable oil", "groundnut oil", "lard or oil", "oil or ghee", "ghee or oil", "pork lard or vegetable oil"], 4],
 [["olive oil", "olive oil or butter"], 13], [["sesame oil"], 15], [["coconut oil"], 12], [["dendê"], 14],
 [["ghee"], 20], [["butter"], 11], [["lard"], 6], [["peanut butter"], 7], [["tahini"], 14],
@@ -26,7 +30,7 @@ window.PRICES = [
 [["sugar", "rock sugar", "palm sugar", "brown sugar", "gula melaka", "nước màu"], 2.5], [["honey", "honey or sugar"], 12],
 [["kecap manis", "hoisin", "oyster sauce"], 8], [["ketchup"], 4], [["mirin", "sake", "shaoxing", "rice wine"], 10], [["gochujang", "doenjang", "miso", "soy paste", "doubanjiang"], 12],
 [["curry paste", "thai chili paste", "nam phrik", "chipotles in adobo"], 14], [["soy sauce", "light soy sauce", "dark soy sauce"], 6], [["fish sauce"], 7],
-[["vinegar"], 3], [["wine", "burgundy"], 10], [["stock", "broth", "dashi"], 1.5], [["water", "ice"], 0], [["tomato passata", "tomato purée"], 3], [["tomato paste"], 6],
+[["vinegar"], 3], [["wine", "burgundy"], 10], [["stock", "broth", "dashi", "chicken stock", "vegetable stock", "beef stock"], 1.5], [["water", "ice"], 0], [["tomato passata", "tomato purée"], 3], [["tomato paste"], 6],
 [["potato", "potatoes", "floury potatoes", "medium potatoes", "large potatoes"], 2], [["sweet potatoes"], 3], [["taro"], 5], [["french fries"], 4], [["olives"], 12],
 [["pineapple"], 3], [["green papaya", "papaya"], 4], [["apple"], 4], [["banana"], 1.5], [["berries", "frozen berries"], 8], [["avocado"], 6],
 [["lemon", "lime", "limes", "small limes", "lime juice"], 5], [["tamarind"], 8],
@@ -38,7 +42,7 @@ window.PRICES = [
 [["eggplant", "eggplants", "long eggplant"], 4.5], [["zucchini", "korean zucchini"], 4], [["cucumber"], 3], [["cauliflower"], 4], [["spinach", "water spinach"], 9],
 [["napa cabbage", "cabbage", "couve", "kale"], 2.5], [["lettuce", "lettuce leaves"], 5], [["kimchi"], 12], [["bean sprouts", "soybean or mung bean sprouts"], 5], [["bamboo shoots"], 6],
 [["mushrooms", "shiitake", "button mushrooms", "oyster or straw mushrooms"], 9], [["okra"], 7], [["radishes"], 6], [["daikon"], 3],
-[["scallion", "scallions", "green onion", "garlic chives", "chives"], 8], [["lemongrass"], 10], [["preserved lemon"], 15], [["fried shallot"], 20],
+[["scallion", "scallions", "green onion", "spring onion", "garlic chives", "chives"], 8], [["lemongrass"], 10], [["preserved lemon"], 15], [["fried shallot"], 20],
 [["herbs", "cilantro", "basil", "mint", "parsley", "perilla", "bạc hà", "coriander", "makrut", "pandan", "curry leaves", "rosemary", "thyme", "epazote", "bouquet garni"], 30],
 [["kombu", "katsuobushi", "wakame"], 60], [["salt", "baking soda"], 1], [["rose water", "kasuri", "dried limes", "gochugaru", "belacan", "shrimp paste"], 20],
 ];

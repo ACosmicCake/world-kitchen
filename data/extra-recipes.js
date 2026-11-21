@@ -995,3 +995,489 @@ window.EXTRA_RECIPES = (window.EXTRA_RECIPES || []).concat([
     ] }
 ]);
 
+
+// ── batch: Vietnamese (more dishes; Vietnamese-language sources) ──
+window.EXTRA_RECIPES = (window.EXTRA_RECIPES || []).concat([
+  { id: "bun-bo-hue", name: "Huế Spicy Beef and Lemongrass Noodle Soup", native: "Bún Bò Huế", country: "Vietnam", region: "Huế", difficulty: 3, servings: 6,
+    tags: ["soup", "spicy", "weekend project", "batch", "freezer"],
+    skills: ["stock", "balance", "knife"],
+    intro: "The signature noodle soup of the old imperial capital Huế: a beef-and-pork bone broth perfumed with lemongrass, deepened with fermented shrimp paste and tinted red with annatto-chili oil. It is served over thick round rice noodles with sliced beef shank, pork hock, pork blood and a mountain of shredded banana blossom and herbs.",
+    ingredients: [
+      "1|kg|beef bones (marrow or knuckle)|meat",
+      "1|kg|pork hock (chân giò), cut into rounds|meat",
+      "500|g|beef shank (bắp bò), tied|meat",
+      "8||lemongrass stalks|produce",
+      "1||onion, halved|produce",
+      "1|piece|ginger (about 5 cm), sliced|produce",
+      "1|tbsp|rock sugar (or white sugar)|pantry",
+      "2|tsp|salt|spice",
+      "4|L|water|pantry",
+      "2|tbsp|Huế fermented shrimp paste (mắm ruốc)|intl",
+      "3|tbsp|fish sauce|intl",
+      "4|clove|garlic, minced|produce",
+      "2||shallots, minced|produce",
+      "3|tbsp|neutral oil|pantry",
+      "3|tbsp|annatto oil (dầu điều)|intl",
+      "1|tbsp|dried chili flakes (or 2 fresh chilies, minced)|spice",
+      "250|g|pork or beef blood cubes (huyết), optional|meat",
+      "200|g|raw pork paste (giò sống) or crab cake, optional|meat",
+      "600|g|thick round rice noodles (bún sợi to)|intl",
+      "1||banana blossom, thinly shredded and kept in salted water|produce",
+      "200|g|bean sprouts|produce",
+      "1|bunch|herbs: Thai basil, sawtooth coriander (ngò gai), mint|produce",
+      "2||limes, in wedges|produce",
+      "1||white onion, sliced paper-thin, and chopped scallions|produce"
+    ],
+    steps: [
+      "A|20|Put the bones, pork hock and beef shank in a pot of cold water, bring to a boil for about 5–10 minutes, then drain and rinse everything under running water. This blanching step is what keeps the finished broth clear.",
+      "A|10|Bruise 6 lemongrass stalks with the back of a knife and cut into lengths; finely mince the other 2 for the chili oil. Return the meats to a clean pot with the 4 L water, bruised lemongrass, halved onion, ginger, rock sugar and salt, and bring to a boil.",
+      "P|150|Lower to a bare simmer with the lid off and skim the foam often. Check the beef shank after about 90 minutes: when a chopstick slides through, lift it out into cold water so it firms up and stays pink, then refrigerate until needed. Keep simmering the bones and hock for the full time.",
+      "A|10|Stir the mắm ruốc into about 200 ml cold water and let it settle for 10–15 minutes. You will only use the cloudy liquid on top; the sandy sediment at the bottom gets thrown away.",
+      "A|10|Make the sa tế: fry the minced lemongrass, garlic and shallot in the neutral oil until golden, then stir in the annatto oil and chili and take it off the heat. Half goes into the broth for color and aroma, the rest goes to the table.",
+      "A|15|Fish out and discard the lemongrass, onion and ginger. Pour in the clear shrimp-paste liquid and half the sa tế, season with fish sauce and taste: the broth should be savory, lightly sweet and noticeably lemongrassy. Drop teaspoons of giò sống into the simmering broth and lift them out when they float; warm the blood cubes in the broth for a few minutes.",
+      "A|15|Cook the noodles according to the packet (thick dried bún usually needs 12–15 minutes), then rinse and drain. Slice the beef shank thinly against the grain.",
+      "A|10|Put noodles in deep bowls, top with beef, pork hock, blood, pork balls, sliced onion and scallion, and ladle over boiling broth. Serve with the banana blossom, bean sprouts, herbs, lime and the remaining sa tế."
+    ],
+    store: { fridge: 3, freeze: 3, reheat: "Store broth, meats, noodles and herbs separately. Reheat the broth to a full boil before pouring over freshly blanched noodles; the herbs and banana blossom must be fresh." },
+    next: "Use leftover broth and beef shank as a spicy braising liquid for tofu and mushrooms, or simmer extra broth with rice for a lemongrass rice porridge.",
+    tips: [
+      "Huế cooks insist on mắm ruốc from Huế (the sources name the Đông Ba market style); ordinary Northern mắm tôm is a much stronger, different paste, so use less if substituting.",
+      "Some cooks add a chunk of pineapple to the simmering bones for a gentle sweetness and discard it later; others use only rock sugar.",
+      "Soak the shredded banana blossom in lightly salted (or lemony) water so it does not turn black before serving.",
+      "Pull the beef shank as soon as it is tender and chill it in cold water: overcooked shank turns dry and grey."
+    ],
+    authenticity: "All three Vietnamese sources build the broth from beef bones, pork hock and beef shank with bruised lemongrass and onion, add strained mắm ruốc and an annatto-chili-lemongrass oil, and serve over thick bún with banana blossom; simmer time (2–2.5 hours) and seasoning quantities were averaged, and the pineapple is noted as an optional variation from one source.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp", url: "https://www.dienmayxanh.com/vao-bep/cach-nau-bun-bo-hue-dam-da-dung-vi-cho-bua-sang-ngay-tet-00541", lang: "vi" },
+      { name: "Báo Pháp Luật Việt Nam", url: "https://baophapluat.vn/cong-thuc-nau-bun-bo-hue-chuan-ngon-post278113.html", lang: "vi" },
+      { name: "Hello Bacsi", url: "https://hellobacsi.com/an-uong-lanh-manh/cong-thuc-nau-an-tot-cho-suc-khoe/cach-nau-bun-bo-hue-chuan-vi/", lang: "vi" }
+    ] },
+
+  { id: "com-tam-suon", name: "Saigon Broken Rice with Grilled Pork Chops", native: "Cơm Tấm Sườn Nướng", country: "Vietnam", region: "Saigon", difficulty: 2, servings: 4,
+    tags: ["grill", "meal prep", "crowd pleaser"],
+    skills: ["rice", "balance", "sear"],
+    intro: "Saigon’s everyday street plate: thin bone-in pork chops marinated in lemongrass, garlic and fish sauce, grilled until lacquered and smoky, and served over fragrant broken rice. Scallion oil, sweet-sour fish sauce and crunchy pickles pull it all together.",
+    ingredients: [
+      "4||thin bone-in pork chops (sườn cốt lết), about 800 g total|meat",
+      "2||lemongrass stalks, finely minced|produce",
+      "1||large shallot, minced|produce",
+      "4|clove|garlic, minced|produce",
+      "2|tbsp|fish sauce|intl",
+      "1|tbsp|soy sauce|intl",
+      "1|tbsp|oyster sauce|intl",
+      "1|tbsp|sugar|pantry",
+      "1|tbsp|honey (plus 1 tbsp for glazing)|pantry",
+      "60|ml|unsweetened milk|dairy",
+      "1/2|tsp|five-spice powder|spice",
+      "1|tsp|ground black pepper|spice",
+      "1|tbsp|neutral oil|pantry",
+      "400|g|broken rice (gạo tấm)|intl",
+      "4||scallions, finely sliced|produce",
+      "3|tbsp|neutral oil (for scallion oil)|pantry",
+      "3|tbsp|fish sauce (for dipping sauce)|intl",
+      "3|tbsp|sugar (for dipping sauce)|pantry",
+      "6|tbsp|warm water|pantry",
+      "1|tbsp|lime juice or rice vinegar|produce",
+      "2|clove|garlic, minced (for dipping sauce)|produce",
+      "2||red chilies, minced|produce",
+      "||pickled carrot and daikon (đồ chua)|intl",
+      "1||cucumber, sliced, and 1 tomato, sliced|produce"
+    ],
+    steps: [
+      "A|10|Rinse the chops in lightly salted water, pat dry and pound them a little thinner with the back of a knife or a mallet so they cook fast on the grill.",
+      "A|10|Blend or pound the lemongrass, shallot and garlic, then mix with the fish sauce, soy sauce, oyster sauce, sugar, honey, milk, five-spice, pepper and oil. Coat the chops all over; the milk helps tenderise the pork.",
+      "P|480|Marinate covered in the fridge, ideally overnight (at least 2–3 hours if you are short on time).",
+      "P|25|Rinse and cook the broken rice in a rice cooker or pot as you would jasmine rice. Meanwhile, stir the dipping-sauce sugar into the warm water and fish sauce until dissolved, then add lime, garlic and chili.",
+      "A|5|Make scallion oil: heat the oil until shimmering, pour it over the sliced scallions with a pinch of salt and stir quickly.",
+      "A|20|Grill the chops over medium charcoal (or under an oven grill at about 200°C), turning every few minutes, for about 15–20 minutes until cooked through. Mix 1 tbsp honey with a spoon of leftover marinade, brush on both sides and grill 1–2 minutes more per side until deep golden and sticky; watch closely because the sugar burns fast.",
+      "A|5|Pile rice on each plate, lay a chop on top, spoon over scallion oil, and add cucumber, tomato and pickles. Serve the fish sauce on the side to pour over everything."
+    ],
+    store: { fridge: 3, freeze: 2, reheat: "Raw marinated chops freeze well for up to 2 months. Cooked chops keep 3 days; reheat in a hot pan or under the grill. Keep scallion oil and dipping sauce in separate jars in the fridge." },
+    next: "Slice leftover chops and stuff them into a bánh mì with pickles, cucumber and herbs, or toss over rice noodles for a quick bún thịt nướng.",
+    tips: [
+      "Street vendors in Saigon dip each chop briefly in water or brush with diluted honey before grilling so the surface caramelises without scorching.",
+      "Recipes vary: one source uses soy sauce and fresh milk, another adds condensed milk or even cola; all agree on lemongrass, garlic, shallot and an overnight marinade.",
+      "A full plate (cơm tấm sườn bì chả) adds shredded pork skin (bì) and a steamed egg-pork meatloaf (chả trứng)."
+    ],
+    authenticity: "Both Vietnamese recipe sources marinate thin bone-in chops overnight with garlic, shallot, sweet-salty sauces and milk, glaze with honey near the end, and serve with scallion oil and sweet fish-sauce dip; I averaged the marinade between the soy-milk and fish-sauce-oyster versions. The VnExpress reader piece confirms the 2:1:1 water-sugar-fish sauce dipping ratio.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp", url: "https://www.dienmayxanh.com/vao-bep/2-cach-lam-com-tam-suon-mem-ngon-dam-da-chuan-vi-ngoai-hang-12278", lang: "vi" },
+      { name: "Điện máy Chợ Lớn – Món ngon", url: "https://dienmaycholon.com/mon-ngon/cach-lam-com-tam", lang: "vi" },
+      { name: "VnExpress Đời sống", url: "https://vnexpress.net/com-tam-suon-cha-cho-ca-nha-thuong-thuc-4359165.html", lang: "vi" }
+    ] },
+
+  { id: "ca-kho-to", name: "Clay-Pot Caramel Braised Fish", native: "Cá Kho Tộ", country: "Vietnam", region: "Mekong Delta", difficulty: 2, servings: 4,
+    tags: ["braise", "one pot", "weeknight", "leftovers"],
+    skills: ["caramel", "braise", "balance"],
+    intro: "A Southern Vietnamese home classic: thick fish steaks braised in a small clay pot (tộ) with dark caramel, fish sauce, coconut water and plenty of black pepper until the sauce turns sticky and glossy. Intensely salty-sweet, it is meant to be eaten with lots of plain rice and boiled or fresh vegetables.",
+    ingredients: [
+      "700|g|catfish, basa or snakehead steaks, about 2 cm thick|seafood",
+      "3|tbsp|fish sauce|intl",
+      "2|tbsp|sugar (1 for caramel, 1 for marinade)|pantry",
+      "1|tsp|salt (for cleaning the fish)|spice",
+      "1|tsp|ground black pepper, plus more to finish|spice",
+      "5|clove|garlic, minced|produce",
+      "3||shallots, minced|produce",
+      "3||red chilies (1 pounded, 2 sliced)|produce",
+      "2|tbsp|neutral oil (or rendered pork fat)|pantry",
+      "300|ml|fresh coconut water|intl",
+      "50|g|ground pork or pork belly, optional|meat",
+      "3||scallions, chopped|produce"
+    ],
+    steps: [
+      "A|10|Rub the fish with salt (or soak briefly in water with lime) to remove the slime and fishy smell, rinse well and pat dry.",
+      "A|5|Make the caramel: in the clay pot or a small heavy pan, cook 1 tbsp sugar with a splash of water over low heat until it turns a deep reddish brown (the colour Vietnamese cooks call cockroach-wing). Take it off the heat as soon as it gets there, or it will turn bitter.",
+      "P|30|Mix the fish with the fish sauce, remaining sugar, pepper, half the garlic and shallot, the pounded chili and the caramel. Marinate for about 30 minutes.",
+      "A|5|Heat the oil in the clay pot and fry the rest of the garlic and shallot until fragrant (add the ground pork now if using and stir until it loses its pink). Lay the fish in a single layer and pour over the marinade.",
+      "A|5|Bring the coconut water to a boil separately and pour it in until the fish is almost covered. Boil and skim off the foam; adding hot rather than cold liquid helps avoid a fishy taste.",
+      "P|30|Lower the heat to a gentle simmer, uncovered. After 10–15 minutes turn the steaks once very gently and keep spooning the sauce over them. If it reduces too fast, add a little more hot coconut water.",
+      "A|5|When the sauce is thick, dark and glossy and the fish is firm, scatter over sliced chili, scallions and lots of black pepper, let it bubble for a minute and serve straight from the pot."
+    ],
+    store: { fridge: 4, freeze: 1, reheat: "Keeps well, and many say it tastes better the next day. Reheat gently in the pot with a spoon of water; avoid stirring so the fish does not break." },
+    next: "Flake leftover fish and its sauce through hot rice with a fried egg and cucumber, or use it as a salty filling in rice-paper rolls with lots of herbs.",
+    tips: [
+      "Snakehead (cá lóc), catfish (cá tra/basa), climbing perch (cá rô) and goby (cá kèo) are all braised this way in the South; choose a firm fish so it holds its shape.",
+      "Some Mekong cooks finish with crisp pork cracklings (tóp mỡ) and a spoon of lard for extra richness.",
+      "If you have no coconut water, use plain water and add a touch more sugar; the coconut water is what gives the Southern version its rounded sweetness.",
+      "Cook on low heat for longer: high heat scorches the caramel before the fish absorbs the seasoning."
+    ],
+    authenticity: "The three Vietnamese sources agree on marinating fish steaks with fish sauce, sugar, pepper, garlic-shallot and caramel colouring, then slow-braising in a clay pot with coconut water and finishing with pepper and scallions; braising time was averaged from their 15–30 minute ranges, and the pork and tóp mỡ additions come from individual sources.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp (cá kho tộ miền Tây)", url: "https://www.dienmayxanh.com/vao-bep/cach-nau-ca-kho-to-mien-tay-man-ngot-dam-da-ngon-chuan-bai-22786", lang: "vi" },
+      { name: "Điện máy XANH – Vào bếp (cá lóc kho tộ)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-mon-ca-loc-kho-to-de-nhat-ngon-nhat-00816", lang: "vi" },
+      { name: "VnExpress Đời sống (cá rô kho tộ kiểu Nam bộ)", url: "https://vnexpress.net/ca-ro-kho-to-kieu-nam-bo-4511289.html", lang: "vi" },
+      { name: "Điện máy Chợ Lớn – Món ngon (cá basa kho tộ)", url: "https://dienmaycholon.com/mon-ngon/cach-lam-ca-basa-kho-to", lang: "vi" }
+    ] },
+
+  { id: "banh-xeo", name: "Crispy Turmeric Rice Pancakes", native: "Bánh Xèo", country: "Vietnam", region: "Mekong Delta", difficulty: 2, servings: 4,
+    tags: ["party", "crowd pleaser", "fresh", "technique"],
+    skills: ["balance", "sear"],
+    intro: "Large, lacy, golden pancakes from Southern Vietnam made from a rice-flour, turmeric and coconut-milk batter that sizzles loudly (xèo) when it hits the hot pan. Filled with pork belly, shrimp and bean sprouts, they are torn into pieces, wrapped in lettuce and herbs, and dipped in sweet-sour fish sauce.",
+    ingredients: [
+      "300|g|rice flour (not glutinous)|intl",
+      "1|tsp|ground turmeric|spice",
+      "1/2|tsp|salt|spice",
+      "400|ml|coconut milk|intl",
+      "350|ml|cold water (or half sparkling water or beer)|pantry",
+      "3||scallions, finely sliced|produce",
+      "300|g|pork belly, thinly sliced|meat",
+      "300|g|shrimp, peeled and halved lengthwise if large|seafood",
+      "2|clove|garlic, minced|produce",
+      "1||shallot, minced|produce",
+      "1|tbsp|fish sauce|intl",
+      "1|tsp|sugar|pantry",
+      "1/2|tsp|ground black pepper|spice",
+      "1||onion, thinly sliced|produce",
+      "300|g|bean sprouts|produce",
+      "6|tbsp|neutral oil or rendered pork fat|pantry",
+      "1||head soft lettuce plus mustard greens|produce",
+      "1|bunch|herbs: mint, perilla, Thai basil|produce",
+      "4|tbsp|fish sauce (for dipping sauce)|intl",
+      "3|tbsp|sugar (for dipping sauce)|pantry",
+      "150|ml|warm water or young coconut water|pantry",
+      "2|tbsp|lime juice|produce",
+      "2|clove|garlic and 1 chili, minced (for dipping sauce)|produce",
+      "1||carrot, finely shredded|produce"
+    ],
+    steps: [
+      "A|10|Whisk the rice flour, turmeric and salt, then gradually beat in the coconut milk and water until completely smooth and thin, like single cream. Stir in the scallions.",
+      "P|60|Rest the batter for at least 30 minutes and up to a few hours; this hydrates the flour so the pancakes crisp better. Stir well before each pancake because the flour settles.",
+      "A|10|Toss the pork and shrimp with garlic, shallot, fish sauce, sugar and pepper and leave for 15 minutes. Meanwhile make the dipping sauce: dissolve the sugar in the warm water, add fish sauce, lime, garlic, chili and shredded carrot.",
+      "A|8|Stir-fry the pork in a little oil for 3–4 minutes until it firms up, add the shrimp for 2 minutes more, then set aside. Pre-cooking keeps the pancakes from steaming.",
+      "A|40|For each pancake, heat a large frying pan very hot with about 2 tsp oil, add a few pieces of pork and shrimp, then ladle in a thin layer of batter and immediately swirl it to the edges. Scatter over onion and a handful of bean sprouts, cover and cook 2–3 minutes on medium heat. Uncover and cook another 2–3 minutes until the edges are deep gold, lacy and crisp, then fold in half and slide out. Repeat (about 8 pancakes).",
+      "A|5|Serve at once with the greens and herbs: tear off a piece, wrap it in lettuce with herbs and dip in the sauce."
+    ],
+    store: { fridge: 1, freeze: 0, reheat: "Best eaten straight from the pan. The batter keeps 1 day in the fridge (stir well). Leftover pancakes can be re-crisped in a dry hot pan, but they never fully regain their crunch." },
+    next: "Chop leftover filling and bean sprouts into a quick fried rice, or use the extra batter to make small bánh khọt-style mini pancakes.",
+    tips: [
+      "Mekong Delta versions are large and thin, often with steamed mung beans in the filling and pork fat for frying; Central Vietnam makes smaller, thicker pancakes in little pans, sometimes with beef.",
+      "For a crust that stays crisp longer, Southern cooks replace part of the water with beer or sparkling water, or add a little crispy-fry flour (bột chiên giòn) or egg.",
+      "Batter that is too thick gives a heavy, soft pancake; it should run freely and almost lace at the edges.",
+      "Make sure the pan is properly hot before every pancake; the loud sizzle is the sign."
+    ],
+    authenticity: "The Vietnamese sources all use a thin rice-flour batter coloured with turmeric, enriched with coconut milk and scallions and rested before frying, with pork belly, shrimp and bean sprouts as filling and a sweet-sour fish sauce dip; ratios were averaged across the from-scratch recipe and the ready-mix versions, and the beer and sparkling-water tricks come from the Mekong-style sources.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp (bánh xèo tôm thịt)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-banh-xeo-ngon-tai-nha-00525", lang: "vi" },
+      { name: "Điện máy XANH – Vào bếp (bánh xèo miền Tây)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-banh-xeo-mien-tay-tu-bot-pha-san-thom-ngon-gion-lau-06721", lang: "vi" },
+      { name: "Báo Lâm Đồng", url: "https://baolamdong.vn/bi-quyet-pha-bot-banh-xeo-mien-tay-gion-lau-thiet-lau-168192.html", lang: "vi" },
+      { name: "Pharmacity (bánh xèo miền Trung)", url: "https://www.pharmacity.vn/cach-lam-banh-xeo-mien-trung-chuan-vi-ngon-gion-tai-nha.htm", lang: "vi" }
+    ] },
+
+  { id: "ga-kho-gung", name: "Ginger Caramel Braised Chicken", native: "Gà Kho Gừng", country: "Vietnam", region: "Southern Vietnam", difficulty: 1, servings: 4,
+    tags: ["braise", "weeknight", "one pot", "budget", "meal prep", "leftovers"],
+    skills: ["caramel", "braise", "sear"],
+    intro: "An everyday Vietnamese family braise: bone-in chicken pieces marinated in fish sauce and sugar, browned in a little caramel and simmered with lots of fresh ginger until the sauce turns thick and glossy. Warming, salty-sweet and quick, it is made for a bowl of hot rice.",
+    ingredients: [
+      "1|kg|bone-in chicken thighs or a small chicken, chopped into pieces|meat",
+      "80|g|fresh ginger (half minced, half cut into fine matchsticks)|produce",
+      "3|clove|garlic, minced|produce",
+      "2||shallots, minced|produce",
+      "3|tbsp|fish sauce|intl",
+      "2|tbsp|sugar (1 for marinade, 1 for caramel)|pantry",
+      "1/2|tsp|salt|spice",
+      "1/2|tsp|ground black pepper|spice",
+      "1|tbsp|oyster sauce, optional|intl",
+      "2|tbsp|neutral oil|pantry",
+      "250|ml|water|pantry",
+      "2||red chilies, sliced|produce",
+      "||chopped coriander or scallions (to serve)|produce"
+    ],
+    steps: [
+      "A|10|Rub the chicken with salt, rinse well and drain. Peel the ginger, mince half and cut the other half into fine matchsticks.",
+      "P|30|Mix the chicken with the minced ginger, shallot, half the garlic, fish sauce, 1 tbsp sugar, salt, pepper and oyster sauce. Marinate 30 minutes (or up to overnight in the fridge for deeper flavor).",
+      "A|5|In a heavy pot, heat the oil with 1 tbsp sugar over low heat and stir until it becomes a dark amber caramel. Add half the ginger matchsticks and the rest of the garlic and fry for a few seconds until fragrant.",
+      "A|5|Add the chicken and stir over high heat for 2–3 minutes until the pieces firm up and take on the caramel color.",
+      "P|25|Pour in water to just below the level of the chicken, bring to a boil, then simmer on low, partly covered, for 20–25 minutes until tender. Stir occasionally.",
+      "A|5|Uncover, raise the heat and reduce the sauce until it coats the chicken. Add the remaining ginger and the chilies, toss for a couple of minutes, taste and adjust with fish sauce or sugar. Finish with pepper and coriander and serve with rice."
+    ],
+    store: { fridge: 4, freeze: 2, reheat: "Reheat gently in a covered pot with a splash of water until bubbling. Flavors deepen overnight, so it is good for meal prep." },
+    next: "Shred leftover chicken off the bone and toss it with the sauce through fried rice or rice noodles with fresh herbs and cucumber.",
+    tips: [
+      "Some cooks use bottled caramel sauce (nước màu) in the marinade instead of making caramel in the pot; about 1 tbsp gives the same color.",
+      "Chicken wings braised the same way (cánh gà kho gừng) are a popular variation and take the same 20–25 minutes.",
+      "Add the second batch of ginger near the end so its fresh heat stays bright against the caramel.",
+      "Old-style family versions use a clay pot and a firmer free-range chicken, which needs longer simmering."
+    ],
+    authenticity: "All Vietnamese sources marinate chopped chicken with ginger, garlic-shallot, fish sauce and sugar for about 30 minutes, brown it (two with caramel or nước màu), then braise with a little water for roughly 20–25 minutes and add more ginger at the end; seasoning amounts were averaged because the sources list differing quantities.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp (cánh gà kho gừng)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-canh-ga-kho-gung-mem-thom-dam-vi-cuc-da-cho-bua-com-16897", lang: "vi" },
+      { name: "Ngôi Sao – VnExpress", url: "https://ngoisao.vnexpress.net/ga-kho-gung-dan-da-am-bung-ngay-thu-3823875.html", lang: "vi" },
+      { name: "Điện máy Chợ Lớn – Món ngon", url: "https://dienmaycholon.com/mon-ngon/cach-lam-ga-kho-gung", lang: "vi" },
+      { name: "Điện máy XANH – Kinh nghiệm hay", url: "https://www.dienmayxanh.com/kinh-nghiem-hay/huong-dan-cach-lam-mon-ga-kho-gung-thom-phuc-dua-c-1188367", lang: "vi" }
+    ] }
+]);
+
+window.EXTRA_RECIPES = (window.EXTRA_RECIPES || []).concat([
+  { id: "pho-ga", name: "Hanoi Chicken Phở", native: "Phở Gà Hà Nội", country: "Vietnam", region: "Hanoi", difficulty: 2, servings: 6,
+    tags: ["soup", "weekend project", "batch", "freezer"],
+    skills: ["stock", "knife", "balance"],
+    intro: "The gentler sibling of beef phở: a clear, golden chicken broth over soft rice noodles, topped with poached hen and slivers of lime leaf. Hanoi cooks flavour it with charred shallot, ginger, onion and toasted coriander seed rather than cinnamon and star anise, so it tastes clean and lightly sweet. The poached chicken is steeped off the heat so the meat stays silky and the skin firm.",
+    ingredients: [
+      "1.8|kg|whole chicken, ideally a free-range hen|meat",
+      "1.5|kg|chicken bones or carcasses|meat",
+      "3.5|L|water|pantry",
+      "50|g|shallots, unpeeled|produce",
+      "50|g|ginger|produce",
+      "1||yellow onion|produce",
+      "10|g|coriander seeds|spice",
+      "1|bunch|coriander with roots|produce",
+      "1|tbsp|salt|spice",
+      "1|tbsp|rock sugar|pantry",
+      "3|tbsp|fish sauce|intl",
+      "1|kg|fresh flat rice noodles (bánh phở)|intl",
+      "4||spring onions|produce",
+      "6||makrut lime leaves|produce",
+      "2||limes|produce",
+      "2||red chillies|produce",
+      "||garlic vinegar (to serve)|pantry"
+    ],
+    steps: [
+      "A|15|Rub the chicken with salt and a little smashed ginger, then rinse. Blanch the chicken and bones in boiling water for about 5 minutes and rinse well under cold water; removing the scum now is what keeps the broth clear.",
+      "A|20|Char the shallots, onion and ginger over a flame or under a grill until blackened in spots, then scrape off the burnt skin and rinse. Dry-toast the coriander seeds in a pan until fragrant and tie them in a cloth bag with the shallots and ginger; keep the onion separate.",
+      "P|150|Put the bones in a large pot with the water, bring to a boil, skim, then simmer uncovered on very low heat for 2 to 3 hours. A lid and a hard boil both make the broth cloudy.",
+      "P|35|Add the spice bag and lower in the whole chicken. Let it bubble gently for 5 minutes, then turn off the heat, cover and let it steep for 25 to 30 minutes, until juices from the thigh run clear.",
+      "A|10|Lift the chicken into a bowl of iced water for a few minutes to tighten the skin, then drain. Pull the meat from the bones and return the carcass to the pot.",
+      "P|40|Add the charred onion and coriander roots and simmer gently for 30 to 45 minutes more; the onion goes in late because long cooking turns the broth sour. Season with salt and rock sugar, adding the fish sauce only at the end so its aroma survives.",
+      "A|15|Shred the chicken and skin, roll the lime leaves tightly and cut them into hair-thin threads, and chop the spring onion and coriander leaves.",
+      "A|10|Dip the noodles in boiling water until soft and divide between bowls. Top with chicken, lime leaf and herbs, then ladle over boiling broth. Serve with lime wedges, sliced chilli and garlic vinegar."
+    ],
+    store: { fridge: 3, freeze: 3, reheat: "Keep broth, chicken and noodles separate. Bring the broth to a full boil before serving and pour it over the cold chicken to warm it; refresh noodles in boiling water." },
+    next: "Toss leftover shredded chicken and noodles with soy, a little sugar, fried shallots and herbs for phở gà trộn, the dry-mixed Hanoi version, with a small cup of broth on the side.",
+    tips: [
+      "Traditional Hanoi phở gà leaves out cinnamon and star anise; Southern versions often add them for a warmer, spicier broth.",
+      "Some Hanoi cooks add a few roasted dried sá sùng (peanut worms) to the broth for extra sweetness; it is hard to find abroad and fine to skip.",
+      "Shops in Hanoi often serve the chicken offal and immature eggs on top; a brush of turmeric-coloured chicken fat gives the skin its golden look."
+    ],
+    authenticity: "Both Vietnamese sources build the broth from blanched bones plus charred shallot, ginger, onion and toasted coriander seed, add the onion late to avoid sourness, and season with fish sauce and rock sugar; quantities follow Điện máy XANH, the steep-off-heat poaching method follows VnExpress.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp", url: "https://www.dienmayxanh.com/vao-bep/cach-nau-pho-ga-ha-noi-thom-ngon-chuan-vi-truyen-thong-cuc-23936", lang: "vi" },
+      { name: "VnExpress (Bùi Thủy)", url: "https://vnexpress.net/pho-ga-ha-noi-truyen-thong-4643362.html", lang: "vi" }
+    ] },
+
+  { id: "mi-quang", name: "Quảng-Style Turmeric Noodles with Chicken", native: "Mì Quảng Gà", country: "Vietnam", region: "Quảng Nam", difficulty: 2, servings: 4,
+    tags: ["crowd pleaser", "party", "meal prep"],
+    skills: ["braise", "balance", "knife"],
+    intro: "The signature noodle of Quảng Nam and Đà Nẵng: wide, yellow rice noodles with turmeric-stained chicken, pork belly and quail eggs, moistened with just a ladle of concentrated broth rather than drowned in soup. Crushed peanuts, a shard of toasted sesame rice cracker and a pile of fresh herbs and banana blossom finish each bowl.",
+    ingredients: [
+      "1.3|kg|chicken, cut into small pieces on the bone|meat",
+      "200|g|pork belly, thinly sliced|meat",
+      "15||quail eggs|dairy",
+      "800|g|fresh mì Quảng noodles (or wide rice noodles)|intl",
+      "30|g|fresh turmeric (or 1 tbsp ground)|produce",
+      "10||củ nén (hành tăm) or 5 small shallots|produce",
+      "4|clove|garlic|produce",
+      "1||small yellow onion|produce",
+      "2||lemongrass stalks, bruised|produce",
+      "500|ml|fresh coconut water|intl",
+      "700|ml|water|pantry",
+      "3|tbsp|fish sauce|intl",
+      "1|tbsp|rock sugar|pantry",
+      "1|tsp|salt|spice",
+      "2|tbsp|cooking oil|pantry",
+      "1|tbsp|annatto oil (dầu điều)|intl",
+      "50|g|roasted peanuts, crushed|pantry",
+      "4||sesame rice crackers (bánh tráng mè)|intl",
+      "3||spring onions|produce",
+      "1|bunch|lettuce, Thai basil and rau răm|produce",
+      "1|handful|bean sprouts or shredded banana blossom|produce",
+      "1||lime|produce",
+      "||red chillies (to serve)|produce"
+    ],
+    steps: [
+      "A|15|Rub the chicken with salt, rinse and drain. Boil the quail eggs for 7 minutes, cool in cold water and peel.",
+      "A|10|Mince the củ nén or shallots, garlic and onion, and pound the turmeric. Toss the chicken with half the aromatics, two thirds of the turmeric, 2 tbsp fish sauce and the salt; toss the pork with the rest of the turmeric and 1/2 tbsp fish sauce.",
+      "P|20|Leave both meats to marinate while you wash the herbs, chop the spring onion and crush the peanuts.",
+      "A|10|Heat the cooking oil and annatto oil in a wide pot and fry the remaining aromatics until fragrant. Add the chicken and pork and stir until the meat firms and turns deep yellow.",
+      "P|20|Pour in the coconut water and water, add the lemongrass and rock sugar, and simmer on medium-low for 15 to 20 minutes, skimming any foam. The liquid should taste rich and slightly sweet-salty, stronger than a soup, because only a little goes in each bowl.",
+      "A|5|Add the quail eggs and simmer 5 minutes more. Taste and adjust with the last of the fish sauce.",
+      "A|5|Toast the sesame rice crackers over a gas flame or in the microwave until puffed and crisp.",
+      "A|10|Blanch the noodles in boiling water for 1 to 2 minutes and drain. Put herbs and sprouts in each bowl if you like, add noodles, then chicken, pork and eggs, and ladle over just enough broth to come part-way up the noodles. Finish with spring onion, peanuts, lime and chilli, and break the cracker over the top."
+    ],
+    store: { fridge: 3, freeze: 2, reheat: "Store the meat and broth together, noodles and herbs separately. Reheat the broth until bubbling; blanch noodles briefly. Crackers and herbs must be fresh." },
+    next: "Spoon leftover turmeric chicken and broth over steamed rice with a fried egg and some herbs for a quick lunch.",
+    tips: [
+      "The most common version in Quảng Nam is tôm thịt: pork belly and shrimp fried with củ nén, turmeric and peanuts, then loosened with pork-bone broth.",
+      "Keep the broth scant; a mì Quảng bowl should look almost like a dressed noodle salad, and eaters toss everything together with lime before eating.",
+      "Củ nén is a tiny Central Vietnamese allium; small shallots plus a little garlic are the usual stand-in."
+    ],
+    authenticity: "VnExpress and Điện máy XANH both marinate chicken with turmeric and shallot, fry it in annatto oil, simmer it in a small amount of liquid with quail eggs and serve with peanuts, rice crackers and herbs; coconut water and quantities follow Điện máy XANH, pork belly and lemongrass follow VnExpress, and the tôm thịt variation comes from a second Điện máy XANH recipe.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp (mì Quảng gà)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-mi-quang-thom-ngon-chuan-vi-mien-trung-00046", lang: "vi" },
+      { name: "VnExpress", url: "https://vnexpress.net/cach-nau-mi-quang-ga-4520523.html", lang: "vi" },
+      { name: "Điện máy XANH – Vào bếp (mì Quảng tôm thịt)", url: "https://www.dienmayxanh.com/vao-bep/cach-nau-mi-quang-tom-thit-thom-ngon-ai-cung-me-chuan-vi-don-06737", lang: "vi" }
+    ] },
+
+  { id: "bo-luc-lac", name: "Shaking Beef", native: "Bò Lúc Lắc", country: "Vietnam", region: "Saigon", difficulty: 2, servings: 4,
+    tags: ["quick", "weeknight", "wok", "one pan"],
+    skills: ["sear", "wok", "knife"],
+    intro: "A French-influenced Saigon favourite: cubes of tender beef seared in a smoking wok and shaken (lúc lắc) so every side browns, then glossed with butter and tossed with peppers and onion. It is piled onto lettuce and tomato and eaten with rice, bread or fries.",
+    ingredients: [
+      "500|g|beef tenderloin or sirloin|meat",
+      "1|tbsp|oyster sauce|intl",
+      "1.5|tbsp|soy sauce|intl",
+      "1/2|tsp|chicken bouillon powder or salt|pantry",
+      "2|tsp|sugar|pantry",
+      "4|clove|garlic, minced|produce",
+      "2||shallots, minced|produce",
+      "1|tsp|black pepper|spice",
+      "1|tbsp|cornstarch|pantry",
+      "200|g|red and green bell peppers|produce",
+      "1/2||onion|produce",
+      "3||spring onions|produce",
+      "3|tbsp|cooking oil|pantry",
+      "50|ml|brandy (optional)|pantry",
+      "1|tbsp|unsalted butter|dairy",
+      "200|g|lettuce|produce",
+      "1||tomato|produce",
+      "||coriander (to garnish)|produce"
+    ],
+    steps: [
+      "A|10|Trim off fat and sinew, then cut the beef into 2 to 2.5 cm cubes. Smaller pieces dry out before they brown; much larger ones stay raw in the middle.",
+      "P|30|Mix the beef with the oyster sauce, 1/2 tbsp soy sauce, bouillon powder, 1 tsp sugar, half the garlic, the pepper and cornstarch. Marinate 20 to 30 minutes; much longer and the seasoning turns the meat salty and soft.",
+      "A|10|Cut the peppers and onion into pieces about the size of the beef and the spring onion into short lengths. Arrange lettuce and sliced tomato on a platter.",
+      "A|4|Heat 1 tbsp oil in a wok over high heat, fry half the shallot until fragrant, then stir-fry the peppers and onion for about 2 minutes until just tender but still crisp. Tip them out.",
+      "A|5|Wipe the wok, heat the rest of the oil until smoking, fry the remaining garlic and shallot for a few seconds, then add the beef in one layer. Leave it untouched for a minute to brown, then shake and toss; add the brandy, remaining soy sauce and sugar, and keep shaking for 2 to 3 minutes until the edges are seared but the centre is still pink.",
+      "A|2|Add the butter, toss until it coats the beef, return the vegetables and spring onion, and shake once more. Spoon over the lettuce and tomato, scatter with coriander and serve straight away."
+    ],
+    store: { fridge: 2, freeze: 0, reheat: "Best eaten immediately; reheating toughens the beef. If needed, warm very briefly in a hot pan." },
+    next: "Chop leftover beef and peppers and stir them through day-old rice for cơm chiên bò lúc lắc, beef fried rice.",
+    tips: [
+      "Crowding the wok makes the beef steam and go grey; cook in two batches if your burner is not very strong.",
+      "Many home versions skip the brandy and butter and simply sear with garlic, seasoning and soy sauce.",
+      "For the classic side of fries, soak potato sticks in salted water, blanch briefly, then deep-fry until golden."
+    ],
+    authenticity: "All three Vietnamese sources use cubed tenderloin, a short marinade with soy or oyster sauce, garlic and sugar, and very fast high-heat searing with peppers and onion; the brandy and butter finish and lettuce-and-tomato platter come from Vinmec and VOV, and the fries and timing notes from Điện máy XANH.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-bo-luc-lac-mem-ngon-hap-dan-khong-bi-dai-cung-01485", lang: "vi" },
+      { name: "Vinmec", url: "https://www.vinmec.com/vie/bai-viet/huong-dan-cach-lam-thit-bo-luc-lac-vi", lang: "vi" },
+      { name: "VOV Đời sống", url: "https://vov.vn/doi-song/bi-quyet-lam-bo-luc-lac-mem-mong-ngon-chuan-vi-nha-hang-post1340741.vov", lang: "vi" }
+    ] },
+
+  { id: "cha-gio", name: "Crispy Fried Spring Rolls", native: "Chả Giò / Nem Rán", country: "Vietnam", region: "Saigon", difficulty: 2, servings: 6,
+    tags: ["party", "crowd pleaser", "freezer", "batch", "weekend project"],
+    skills: ["knife", "balance"],
+    intro: "Golden rice-paper rolls stuffed with pork, shrimp, taro, wood ear and glass noodles, fried until shatteringly crisp. This is the Southern style, where taro adds a nutty sweetness; families roll them by the dozen for Tết and freeze the rest. Wrap them in lettuce and herbs and dip in sweet-sour fish sauce.",
+    ingredients: [
+      "300|g|minced pork (about 20% fat)|meat",
+      "200|g|raw shrimp, peeled|seafood",
+      "200|g|taro|produce",
+      "1||carrot (about 100 g)|produce",
+      "15|g|dried wood ear mushrooms|intl",
+      "40|g|glass noodles (bún tàu / miến)|intl",
+      "40|g|shallots|produce",
+      "3|clove|garlic|produce",
+      "3||spring onions|produce",
+      "1||egg|dairy",
+      "1|tbsp|chicken bouillon powder (hạt nêm)|pantry",
+      "1|tbsp|sugar|pantry",
+      "1/2|tsp|salt|spice",
+      "1|tsp|black pepper|spice",
+      "30||rice paper spring roll wrappers (bánh tráng / bánh đa nem)|intl",
+      "1|tsp|plain flour (mixed with water to seal)|pantry",
+      "1|L|oil for frying|pantry",
+      "3|tbsp|fish sauce (for dipping sauce)|intl",
+      "3|tbsp|sugar (for dipping sauce)|pantry",
+      "2|tbsp|lime juice|produce",
+      "||lettuce, herbs and pickled carrot and daikon (to serve)|produce"
+    ],
+    steps: [
+      "P|20|Soak the wood ear in warm water until fully swollen. Soak the glass noodles for about 3 minutes only, so they stay springy.",
+      "A|15|Peel and coarsely grate the taro and carrot into short 3 to 4 cm shreds. Mince the shallots and garlic, slice the spring onion, finely chop the wood ear and cut the noodles into short lengths. Pat the shrimp very dry and chop or pulse it fine.",
+      "P|30|Spread the taro and carrot on a tray and let them air-dry; a wet filling makes the wrappers tear and spit in the oil.",
+      "A|10|Fry the shallots and garlic in a little oil until golden. In a large bowl mix the pork, shrimp, fried aromatics, spring onion, bouillon powder, sugar, salt, pepper and egg, then fold in the vegetables, wood ear and noodles. Fry a teaspoon of filling to check the seasoning.",
+      "A|40|Lay a wrapper with a corner towards you (dab brittle rice paper lightly with water first). Spread a heaped tablespoon of filling across the lower third, fold up the bottom corner, fold in the sides and roll firmly but not tightly, since an over-tight roll bursts as it fries. Seal the tip with flour paste.",
+      "P|30|Chill the rolls uncovered in the fridge so the skins dry and firm up; this is the trick that stops them splitting.",
+      "A|25|Heat the oil to about 150 to 160 °C and fry in batches over medium heat, turning, for 8 to 10 minutes until pale gold and cooked through. Turn up the heat for the last minute to crisp them and drive out oil, then drain standing upright on paper.",
+      "A|5|For the dipping sauce, stir the fish sauce, sugar and lime juice into 6 tbsp warm water with some minced garlic and chilli. Serve the rolls hot with lettuce, herbs and pickles."
+    ],
+    store: { fridge: 2, freeze: 1, reheat: "Freeze uncooked rolls on a tray, then bag them; fry from frozen a little longer. Re-crisp cooked rolls in a 200 °C oven or air fryer, never the microwave." },
+    next: "Slice leftover rolls over cold rice vermicelli with herbs, pickles and the dipping sauce for bún chả giò.",
+    tips: [
+      "Same dish, different names: Northerners call it nem rán, Southerners chả giò, and in Central Vietnam it is ram.",
+      "The Northern (Hanoi) style is usually smaller, with pork, wood ear, glass noodles, egg and carrot or kohlrabi, rolled in thin bánh đa nem; the South adds taro or jicama and often uses lacy bánh tráng rế for an extra-craggy crust.",
+      "For rolls that stay crisp for a party, fry once until set but pale, cool, then fry again just before serving.",
+      "Southern dipping sauce tends to be sweeter and stronger (sometimes diluted with coconut water); Northern nước chấm is thinner and milder."
+    ],
+    authenticity: "The two Điện máy XANH recipes (Southern with taro and shrimp, Northern with duck egg and cabbage) and the Hoàng Hà Mobile guide all agree on minced pork, wood ear, glass noodles and egg-bound filling, firm rolling and medium-heat frying; quantities are scaled from the Southern recipe, and chilling and double-frying come from the Southern recipe and Hoàng Hà Mobile.",
+    sources: [
+      { name: "Điện máy XANH – Vào bếp (chả giò miền Nam)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-cha-gio-mien-nam-nhan-tom-thit-ngon-gion-tan-de-dai-24366", lang: "vi" },
+      { name: "Điện máy XANH – Vào bếp (chả giò miền Bắc)", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-cha-gio-mien-bac-ngon-gion-chuan-vi-nha-hang-13794", lang: "vi" },
+      { name: "Hoàng Hà Mobile – Tin tức", url: "https://hoanghamobile.com/tin-tuc/cach-lam-cha-gio-nem-ran/", lang: "vi" }
+    ] },
+
+  { id: "rau-muong-xao-toi", name: "Water Spinach Stir-Fried with Garlic", native: "Rau Muống Xào Tỏi", country: "Vietnam", region: "Hanoi", difficulty: 1, servings: 4,
+    tags: ["quick", "weeknight", "wok", "budget", "light"],
+    skills: ["wok"],
+    intro: "The everyday green on Vietnamese tables: hollow-stemmed water spinach flash-cooked with a lot of garlic until bright green and crunchy. A quick blanch and ice bath before the wok is the home cook’s trick for keeping it vivid instead of dull and dark.",
+    ingredients: [
+      "500|g|water spinach (rau muống)|produce",
+      "10|clove|garlic|produce",
+      "2|tbsp|lard or cooking oil|pantry",
+      "1|tsp|oyster sauce|intl",
+      "1/2|tsp|chicken bouillon powder or salt|pantry",
+      "1/2|tsp|sugar|pantry",
+      "1|tbsp|vinegar (for soaking)|pantry",
+      "1|tbsp|coarse salt (for blanching)|spice",
+      "||ice|frozen"
+    ],
+    steps: [
+      "A|10|Snap off the tough lower stems and any yellow leaves, then break the rest into finger-length pieces; split very thick stems lengthwise so they cook evenly.",
+      "P|15|Soak the greens in cold water with the vinegar for about 15 minutes; the acidity helps stop the cut stems from darkening. Meanwhile mince half the garlic and lightly crush the remaining cloves.",
+      "A|5|Bring a large pot of water to a rolling boil with the coarse salt. Blanch the greens for 10 to 20 seconds only, then lift straight into iced water to lock in the colour and crunch. Drain very well.",
+      "A|4|Heat the lard or oil in a wok over high heat and fry the minced garlic until fragrant and just golden at the edges. Add the drained greens and toss hard for 1 to 2 minutes, seasoning with the oyster sauce, bouillon powder and sugar.",
+      "A|1|Toss in the crushed garlic, give it a few seconds, turn off the heat and serve at once."
+    ],
+    store: { fridge: 1, freeze: 0, reheat: "Eat fresh; it darkens and goes limp on standing." },
+    next: "Chop any leftovers and stir them into a beaten-egg omelette, or fold into fried rice at the very end.",
+    tips: [
+      "Choose water-grown rau muống with slim stems; field-grown kinds turn dark and stringy when cooked.",
+      "A Hanoi touch is to season with a little mắm tôm (fermented shrimp paste) instead of oyster sauce, sometimes with a handful of rau ngổ.",
+      "Without a blanch, stir-fry the raw greens on high heat with a splash of water for a few minutes, or, as some Central Vietnamese cooks do, cover the pan for 1 to 2 minutes, then uncover and toss."
+    ],
+    authenticity: "VnExpress, Điện máy XANH and VTC News all fry garlic in hot fat and cook the greens fast on high heat, holding some garlic back for the end; the salted blanch and ice bath come from VnExpress, the vinegar soak from VTC News, and quantities from Điện máy XANH.",
+    sources: [
+      { name: "VnExpress (Bùi Thủy)", url: "https://vnexpress.net/cach-xao-rau-muong-xanh-gion-4444514.html", lang: "vi" },
+      { name: "Điện máy XANH – Vào bếp", url: "https://www.dienmayxanh.com/vao-bep/cach-lam-rau-muong-xao-toi-ngon-thom-nuc-mui-dan-da-kho-cuong-09390", lang: "vi" },
+      { name: "VTC News", url: "https://vtcnews.vn/xao-rau-muong-theo-cach-nay-khong-lo-rau-bi-tham-den-dai-hay-chay-nuoc-ar879921.html", lang: "vi" }
+    ] }
+]);

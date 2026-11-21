@@ -2,7 +2,7 @@
 
 **Live app: https://acosmiccake.github.io/world-kitchen/**
 
-A cookbook, meal planner and cooking coach for people who cook alone, with 63 traditional recipes from 26 countries and a guide to 128 ingredients. It works offline and can be installed as an app.
+A cookbook, meal planner and cooking coach for people who cook alone, with 73 traditional recipes from 26 countries and a guide to 128 ingredients. It works offline and can be installed as an app.
 
 ## Run it
 - **Best:** double-click **`start.cmd`**. It opens http://localhost:5173 in your browser (it needs [Node.js](https://nodejs.org)). Keep the black window open while you use the app, and close it to stop.
