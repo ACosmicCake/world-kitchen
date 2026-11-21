@@ -677,6 +677,24 @@ function buildWeek() {
     if (best && best.s.cook >= 30) batchDays = [best];
     else notes.push("No day has 30+ minutes to cook, so there is no batch-cook session. Give at least one day 60+ minutes for the plan to work well.");
   }
+  // Kickoff cook: meals before the week's first batch day (e.g. Mon–Fri when you batch on the weekend)
+  // are covered by a batch cooked earlier — the free day just before the week, or the earliest day with some time.
+  const firstSlot = slots[0];
+  if (firstSlot && firstSlot.d.i < (batchDays[0]?.i ?? 7)) {
+    let kick = null;
+    if (P.week === "next") {
+      const before = G.schedule.map((s, i) => ({ date: ymd(addDays(parseYmd(dates[0]), i - 7)), i: i - 7, s, target: dayTarget(i), active: false, kickoff: true }))
+        .filter((d) => d.date >= today && d.s.cook >= 60);
+      kick = before[before.length - 1] || null;
+    }
+    if (!kick) kick = days.filter((d) => d.active && d.i < (batchDays[0]?.i ?? 7) && d.s.cook >= 30).sort((a, b) => b.s.cook - a.s.cook || a.i - b.i)[0] || null;
+    if (kick && kick.i > firstSlot.d.i) {
+      // the best day comes after some meals: those earlier meals stay uncovered unless that day is the first one
+      const earliest = days.find((d) => d.active && d.i === firstSlot.d.i && d.s.cook >= 30);
+      if (earliest) kick = earliest;
+    }
+    if (kick) { batchDays.unshift(kick); if (kick.kickoff) notes.push(`Kickoff batch cook on ${dayLabel(parseYmd(kick.date))} (before the week starts) covers the first weekdays. Its ingredients are on that week’s grocery list.`); }
+  }
   batchDays.forEach((b, bi) => {
     const end = bi + 1 < batchDays.length ? batchDays[bi + 1].i : 7;
     const win = slots.filter((s) => s.d.i >= b.i && s.d.i < end && !assign.has(key(s)));
@@ -789,7 +807,8 @@ function buildWeek() {
   if (lowP.length) notes.push(`Protein is short on ${lowP.map((d) => DAYS[dates.indexOf(d.date)]).join(", ")}. Swap a snack for Greek yogurt or the gainer smoothie, or add 2 eggs.`);
 
   // write to the meal plan
-  if (P.replace) state.plan = state.plan.filter((p) => !(dates.includes(p.date) && p.date >= today));
+  // (also clears a kickoff cook from a previous build, which sits just before the week)
+  if (P.replace) state.plan = state.plan.filter((p) => !(p.date >= today && (dates.includes(p.date) || (p.gp && p.date < dates[0]))));
   state.plan.push(...entries);
   G.result = { week: dates[0], days: out, sessions, notes, built: ymd(new Date()) };
   save();
