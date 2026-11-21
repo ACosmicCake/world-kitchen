@@ -185,3 +185,19 @@ label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; 
   .cookmode { padding: 16px; }
   .shop-item .for { display: none; }
 }
+
+/* ingredient guide */
+.ing-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.icard { padding: 0; overflow: hidden; cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.icard:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(60,40,20,.08); }
+.ithumb { height: 140px; background: #f1ebe3; display: grid; place-items: center; font-size: 40px; overflow: hidden; }
+.ithumb img { width: 100%; height: 100%; object-fit: cover; }
+.ibody { padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+.ing-hero { display: grid; grid-template-columns: 260px 1fr; gap: 20px; margin: 12px 0; align-items: start; }
+.ing-img { position: relative; width: 100%; aspect-ratio: 4/3; background: #f1ebe3; border-radius: 12px; overflow: hidden; display: grid; place-items: center; }
+.ing-img img { width: 100%; height: 100%; object-fit: cover; }
+.ing-img .credit { position: absolute; right: 0; bottom: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 10px; padding: 3px 7px; border-top-left-radius: 8px; text-decoration: none; }
+a.ing-link { color: inherit; text-decoration: underline dotted var(--accent); text-underline-offset: 3px; }
+a.ing-link:hover { color: var(--accent); }
+.badge-src { font-size: 11px; background: var(--blue-soft); color: var(--blue); padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+@media (max-width: 640px) { .ing-hero { grid-template-columns: 1fr; } }

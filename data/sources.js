@@ -18,12 +18,23 @@ window.SOURCES = {
   "Philippines": [{ name: "Panlasang Pinoy", domain: "panlasangpinoy.com", lang: "en" }, { name: "Kawaling Pinoy", domain: "kawalingpinoy.com", lang: "en" }],
   "Peru":        [{ name: "Buenazo", domain: "buenazo.pe", lang: "es" }],
   "Indonesia":   [{ name: "Cookpad Indonesia", domain: "cookpad.com/id", lang: "id" }, { name: "Resep Koki", domain: "resepkoki.id", lang: "id" }],
+  "Malaysia":    [{ name: "Utusan Malaysia (resipi)", domain: "utusan.com.my", lang: "ms" }, { name: "Free Malaysia Today (food)", domain: "freemalaysiatoday.com", lang: "en" }],
+  "Taiwan":      [{ name: "愛料理 iCook", domain: "icook.tw", lang: "zh-TW" }, { name: "鏡週刊 Mirror Media", domain: "mirrormedia.mg", lang: "zh-TW" }],
+  "Sri Lanka":   [{ name: "Hungry Lankan", domain: "hungrylankan.com", lang: "en" }, { name: "Infolanka Recipes", domain: "infolanka.com", lang: "en" }],
+  "Turkey":      [{ name: "Yemek.com", domain: "yemek.com", lang: "tr" }, { name: "Habertürk Yemek", domain: "haberturk.com", lang: "tr" }],
+  "Iran":        [{ name: "Namnak", domain: "namnak.com", lang: "fa" }, { name: "Bartarinha", domain: "bartarinha.ir", lang: "fa" }],
+  "Portugal":    [{ name: "Teleculinária", domain: "teleculinaria.pt", lang: "pt" }, { name: "Pingo Doce Receitas", domain: "pingodoce.pt", lang: "pt" }],
+  "Hungary":     [{ name: "Mindmegette", domain: "mindmegette.hu", lang: "hu" }, { name: "Street Kitchen", domain: "streetkitchen.hu", lang: "hu" }],
+  "Brazil":      [{ name: "TudoGostoso", domain: "tudogostoso.com.br", lang: "pt" }, { name: "Receiteria", domain: "receiteria.com.br", lang: "pt" }],
+  "Nigeria":     [{ name: "All Nigerian Recipes", domain: "allnigerianrecipes.com", lang: "en" }, { name: "Fabwoman", domain: "fabwoman.ng", lang: "en" }],
+  "Ethiopia":    [{ name: "TouchWood Editions (Luladey Moges)", domain: "touchwoodeditions.com", lang: "en" }],
 };
 
 window.FLAGS = {
   "Vietnam": "🇻🇳", "Japan": "🇯🇵", "Korea": "🇰🇷", "Thailand": "🇹🇭", "China": "🇨🇳", "India": "🇮🇳",
   "Italy": "🇮🇹", "France": "🇫🇷", "Spain": "🇪🇸", "Mexico": "🇲🇽", "Greece": "🇬🇷", "Lebanon": "🇱🇧",
-  "Morocco": "🇲🇦", "Philippines": "🇵🇭", "Peru": "🇵🇪", "Indonesia": "🇮🇩", "Basics": "🍚",
+  "Morocco": "🇲🇦", "Philippines": "🇵🇭", "Peru": "🇵🇪", "Indonesia": "🇮🇩", "Malaysia": "🇲🇾", "Taiwan": "🇹🇼", "Sri Lanka": "🇱🇰", "Turkey": "🇹🇷", "Iran": "🇮🇷",
+  "Portugal": "🇵🇹", "Hungary": "🇭🇺", "Brazil": "🇧🇷", "Nigeria": "🇳🇬", "Ethiopia": "🇪🇹", "Basics": "🍚",
 };
 
 // Cooking techniques. Recipes reference these by id; cooking recipes builds your skill level.

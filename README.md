@@ -2,7 +2,7 @@
 
 **Live app: https://acosmiccake.github.io/world-kitchen/**
 
-A cookbook, meal planner and cooking coach for people who cook alone, with traditional recipes from 16 countries. It works offline and can be installed as an app.
+A cookbook, meal planner and cooking coach for people who cook alone, with 63 traditional recipes from 26 countries and a guide to 128 ingredients. It works offline and can be installed as an app.
 
 ## Run it
 - **Best:** double-click **`start.cmd`**. It opens http://localhost:5173 in your browser (it needs [Node.js](https://nodejs.org)). Keep the black window open while you use the app, and close it to stop.
@@ -22,8 +22,13 @@ In the **Pantry** tab you tap what you have at home, or use a starter kit (Basic
 - **Recipes:** each ingredient is marked "✓ have" or "need", and one button adds the missing items to your grocery list.
 - **Discover and Pantry:** "Cook from your pantry" shows the dishes you're closest to being able to make, and you can sort recipes by "most ingredients I have".
 
+## Ingredient guide
+The **Ingredients** tab covers 128 key ingredients. Each one has its history, taste, how to use it, buying and storing tips, substitutes, a photo, a short Wikipedia summary, and the recipes that use it. Tap an underlined ingredient inside any recipe to open it. Photos and summaries load from Wikipedia and Wikimedia Commons with credit (CC BY-SA), and they are saved for offline use after the first view.
+
 ## Files
 - `data/recipes.js`: the recipe database. The format is documented at the top of the file, so adding a recipe means copying an existing entry.
+- `data/extra-recipes.js`: 25 researched recipes. Each was cross-checked against 2–3 real recipe pages from the dish's country, listed with links in the app.
+- `data/ingredients.js`: the ingredient guide.
 - `data/sources.js`: authentic local sources per country, the cooking skills, and the flag for each country.
 - `app.js`: all app logic.
 - `sw.js`: the offline cache. **When you change any app file, bump `VERSION` in this file** so installed copies update. The app then shows "↻ Update ready — tap to reload".
@@ -35,4 +40,6 @@ In the **Pantry** tab you tap what you have at home, or use a starter kit (Basic
 Everything is stored only in your browser on this device (localStorage), and nothing is sent anywhere. Use **Journal → Download backup** to save it or move it to another device.
 
 ## About the recipes
-The recipes are written up from traditional home-cooking methods for each dish. They are not copied from any website. Each recipe links to a site search for its **native dish name** (e.g. 親子丼, phở bò, ผัดกะเพรา) on recipe sites from that country, so you can check how local home cooks make it.
+**Researched recipes (25, marked 📚 sourced):** for each dish, 2–3 recipe pages from the dish's country were read, mostly in the local language (Vietnamese, Japanese, Thai, Turkish, Persian, Hungarian…). The recipe was then written in our own words from what those pages agree on. Each recipe shows its source links and a note on what was cross-checked.
+
+**Original 38 recipes:** these are written up from traditional home-cooking methods for each dish. They are not copied from any website. Each recipe links to a site search for its **native dish name** (e.g. 親子丼, phở bò, ผัดกะเพรา) on recipe sites from that country, so you can check how local home cooks make it.

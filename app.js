@@ -25,7 +25,11 @@ function fmtMin(m) {
 function parseQty(s) {
   if (!s) return null;
   s = s.trim();
+  const mixed = s.match(/^(\d+)\s+(\d+)\/(\d+)$/); // "1 1/2"
+  if (mixed) return +mixed[1] + mixed[2] / mixed[3];
   if (s.includes("/")) { const [a, b] = s.split("/"); return +a / +b; }
+  const range = s.match(/^([\d.]+)\s*[-–]\s*([\d.]+)$/); // "2-3" → 2.5
+  if (range) return (+range[1] + +range[2]) / 2;
   return +s;
 }
 function fmtQty(x, unit) {
@@ -47,7 +51,20 @@ const mondayOf = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.ge
 const dayLabel = (d) => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
 // ───────────── data prep ─────────────
-const RECIPES = window.RECIPES;
+const RECIPES = window.RECIPES.concat(window.EXTRA_RECIPES || []);
+
+// ───────────── ingredient guide lookup ─────────────
+const GUIDE = window.INGREDIENTS || [];
+const GUIDE_BY_ID = Object.fromEntries(GUIDE.map((g) => [g.id, g]));
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const GUIDE_PATTERNS = GUIDE.flatMap((g) => g.m.map((m) => ({ g, len: m.length, re: new RegExp(`(^|[^a-zà-ỹ])${reEsc(m.toLowerCase())}(s|es)?([^a-zà-ỹ]|$)`) })));
+// longest matching word wins: "fermented black beans" → douchi, not black beans
+function guideFor(name) {
+  const n = name.toLowerCase();
+  let best = null;
+  for (const p of GUIDE_PATTERNS) if (p.re.test(n) && (!best || p.len > best.len)) best = p;
+  return best ? best.g : null;
+}
 const BY_ID = {};
 for (const r of RECIPES) {
   r.ing = r.ingredients.map((line) => { const [q, u, n, a] = line.split("|"); return { q: parseQty(q), u: u || "", n, a: a || "pantry" }; });
@@ -61,6 +78,9 @@ for (const r of RECIPES) {
   r.activeMin = main.filter((s) => s.active).reduce((a, s) => a + s.min, 0);
   r.totalMin = main.reduce((a, s) => a + s.min, 0);
   r.flag = `<span class="fl">${window.FLAGS[r.country] || "🍽️"}</span>`;
+  for (const i of r.ing) i.g = guideFor(i.n);
+  r.sourced = Array.isArray(r.sources) && r.sources.length > 0;
+  if (r.sourced && !r.tags.includes("sourced")) r.tags.push("sourced");
   BY_ID[r.id] = r;
 }
 const SKILL_BY_ID = Object.fromEntries(window.SKILLS.map((s) => [s.id, s]));
@@ -116,7 +136,7 @@ function skillCounts() {
 const skillLevel = (n) => (n >= 5 ? "Confident" : n >= 3 ? "Competent" : n >= 1 ? "Learning" : "Not started");
 
 // ───────────── routing ─────────────
-const views = { pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
+const views = { ingredients: renderIngredients, pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
 function route() {
   const tab = (location.hash.slice(1).split("?")[0]) || "discover";
   $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
@@ -136,6 +156,113 @@ function openModal(html, narrow = false) {
 function closeModal() { $("#modal").classList.add("hidden"); }
 document.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); } });
+
+// ───────────── INGREDIENT GUIDE ─────────────
+// Photos and encyclopedia intros come from Wikipedia / Wikimedia Commons (credited on screen).
+// Results are cached in localStorage and the images by the service worker, so the guide works offline after a visit.
+const WIKI_API = "https://en.wikipedia.org/w/api.php?format=json&origin=*&redirects=1&action=query";
+const CAT_LABEL = { aromatic: "🧄 Aromatics", herb: "🌿 Herbs", spice: "🌶️ Spices", sauce: "🍶 Sauces, pastes & ferments", produce: "🥬 Produce", grain: "🍚 Rice, noodles & legumes", protein: "🥩 Meat & seafood", dairy: "🥚 Eggs, dairy & tofu", pantry: "🥫 Pantry", bakery: "🌮 Breads & tortillas" };
+const catIcon = (c) => (CAT_LABEL[c] || "🍽️ Other").split(" ")[0];
+const catLabel = (c) => CAT_LABEL[c] || "🍽️ Other";
+let thumbs = store.get("thumbs", {});           // wiki title -> thumbnail url
+const wikiCache = store.get("wiki", {});        // wiki title -> {extract, url, img, file}
+
+async function wikiQuery(titles, extra) {
+  const res = await fetch(`${WIKI_API}&titles=${encodeURIComponent(titles.join("|"))}${extra}`);
+  const j = await res.json();
+  const map = {};
+  const norm = {}; for (const n of j.query.normalized || []) norm[n.from] = n.to;
+  const red = {}; for (const r of j.query.redirects || []) red[r.from] = r.to;
+  const pages = {}; for (const p of Object.values(j.query.pages || {})) pages[p.title] = p;
+  for (const t of titles) { let x = norm[t] || t; x = red[x] || x; map[t] = pages[x]; }
+  return map;
+}
+async function loadThumbs() {
+  const titles = [...new Set(GUIDE.map((g) => g.imgWiki || g.wiki))].filter((t) => !(t in thumbs));
+  for (let i = 0; i < titles.length; i += 50) {
+    try {
+      const map = await wikiQuery(titles.slice(i, i + 50), "&prop=pageimages&piprop=thumbnail&pithumbsize=320");
+      for (const [t, p] of Object.entries(map)) thumbs[t] = p?.thumbnail?.source || "";
+    } catch { return; } // offline: keep whatever we have
+  }
+  store.set("thumbs", thumbs);
+}
+async function loadWiki(g) {
+  if (wikiCache[g.wiki]) return wikiCache[g.wiki];
+  const info = (await wikiQuery([g.wiki], "&prop=extracts|pageimages|info&exintro=1&explaintext=1&exsentences=4&piprop=thumbnail|name&pithumbsize=640&inprop=url"))[g.wiki] || {};
+  let imgPage = info;
+  if (g.imgWiki) imgPage = (await wikiQuery([g.imgWiki], "&prop=pageimages&piprop=thumbnail|name&pithumbsize=640"))[g.imgWiki] || {};
+  const data = { extract: info.extract || "", url: info.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(g.wiki)}`, title: info.title || g.wiki.replace(/_/g, " "),
+    img: imgPage.thumbnail?.source || "", file: imgPage.pageimage || "" };
+  wikiCache[g.wiki] = data; store.set("wiki", wikiCache);
+  return data;
+}
+const recipesUsing = (g) => RECIPES.filter((r) => r.ing.some((i) => i.g === g));
+const guideKeys = (g) => [...new Set(RECIPES.flatMap((r) => r.ing.filter((i) => i.g === g).map((i) => i.k)))];
+
+let ingFilter = { q: "", cat: "" };
+function renderIngredients() {
+  const f = ingFilter, q = f.q.toLowerCase();
+  const list = GUIDE.filter((g) => (!f.cat || g.cat === f.cat) && (!q || `${g.name} ${g.native} ${g.origin}`.toLowerCase().includes(q)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const cats = Object.keys(CAT_LABEL).filter((c) => GUIDE.some((g) => g.cat === c));
+  $("#view").innerHTML = `
+    <h1>Ingredients</h1>
+    <p class="sub">${GUIDE.length} key ingredients: what they are, where they come from, how to use, store and swap them. Tap any underlined ingredient in a recipe to jump here.</p>
+    <div class="filters"><input type="search" id="ig-q" placeholder="Search ingredients, e.g. galangal, miso, saffron…" value="${esc(f.q)}"></div>
+    <div class="row" style="margin-bottom:16px"><span class="chip click ${!f.cat ? "on" : ""}" data-cat="">All</span>${cats.map((c) => `<span class="chip click ${f.cat === c ? "on" : ""}" data-cat="${c}">${CAT_LABEL[c]}</span>`).join("")}</div>
+    <div class="grid ing-grid">${list.map((g) => {
+      const t = thumbs[g.imgWiki || g.wiki];
+      return `<div class="card icard" data-guide="${g.id}">
+        <div class="ithumb">${t ? `<img src="${esc(t)}" alt="${esc(g.name)}" loading="lazy">` : `<span>${catIcon(g.cat)}</span>`}</div>
+        <div class="ibody"><b>${esc(g.name)}</b><div class="small muted">${esc(g.native)}</div><div class="small">📍 ${esc(g.origin)}</div>
+        <div class="small muted">Used in ${recipesUsing(g).length} recipe(s)</div></div></div>`; }).join("") || `<div class="empty">No ingredients match.</div>`}</div>
+    <p class="small muted" style="margin-top:20px">Photos and encyclopedia summaries: Wikipedia &amp; Wikimedia Commons contributors (CC BY-SA). Cooking notes: World Kitchen.</p>`;
+  const qi = $("#ig-q");
+  qi.oninput = () => { f.q = qi.value; renderIngredients(); const n = $("#ig-q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+  $$("[data-cat]").forEach((c) => c.onclick = () => { f.cat = c.dataset.cat; renderIngredients(); });
+  $$("[data-guide]").forEach((c) => c.onclick = () => openIngredient(c.dataset.guide));
+  if (GUIDE.some((g) => !((g.imgWiki || g.wiki) in thumbs)) && navigator.onLine) loadThumbs().then(() => { if (location.hash === "#ingredients") renderIngredients(); });
+}
+
+async function openIngredient(id, back) {
+  const g = GUIDE_BY_ID[id];
+  const used = recipesUsing(g), keys = guideKeys(g);
+  const owned = keys.some((k) => state.pantry[k]);
+  const section = (icon, title, text) => text ? `<div class="box"><b>${icon} ${title}</b><div class="small" style="margin-top:4px">${esc(text)}</div></div>` : "";
+  openModal(`
+    ${back ? `<button class="btn sm" id="ig-back">← Back to ${esc(BY_ID[back.recipe].name)}</button>` : ""}
+    <div class="ing-hero"><div class="ing-img" id="ig-img"><span class="muted small">Loading photo…</span></div>
+      <div><h1>${esc(g.name)}</h1><div class="muted">${esc(g.native)}</div>
+        <div style="margin-top:8px"><span class="chip">${catLabel(g.cat)}</span><span class="chip">📍 ${esc(g.origin)}</span></div>
+        <div class="row" style="margin-top:12px">${keys.length ? `<button class="btn ${owned ? "" : "primary"}" id="ig-pantry">${owned ? "✓ In my pantry — remove" : "🏠 I have this"}</button>` : ""}</div></div></div>
+    <div class="box amber"><b>📜 History</b><div style="margin-top:4px">${esc(g.hist)}</div></div>
+    <div class="box blue" id="ig-wiki"><b>📖 From Wikipedia</b><div class="small muted" style="margin-top:4px">Loading…</div></div>
+    <div class="two" style="margin-top:4px;grid-template-columns:1fr 1fr">
+      <div>${section("👅", "Taste", g.taste)}${section("🍳", "How to use it", g.use)}</div>
+      <div>${section("🧺", "Buying & storing", g.keep)}${section("🔄", "Substitutes", g.subs)}</div>
+    </div>
+    <h2>Recipes that use it (${used.length})</h2>
+    <div>${used.map((r) => `<span class="chip click" data-open="${r.id}">${r.flag} ${r.name}</span>`).join("") || "<span class='muted'>None yet.</span>"}</div>`);
+  if ($("#ig-back")) $("#ig-back").onclick = () => openRecipe(back.recipe, back.servings);
+  if ($("#ig-pantry")) $("#ig-pantry").onclick = () => {
+    if (owned) keys.forEach((k) => delete state.pantry[k]); else keys.forEach((k) => addToPantry(k));
+    save(); openIngredient(id, back);
+  };
+  $$("#modal-card [data-open]").forEach((c) => c.onclick = () => openRecipe(c.dataset.open));
+  try {
+    const w = await loadWiki(g);
+    if (!$("#ig-wiki") || $("#modal").classList.contains("hidden")) return;
+    $("#ig-img").innerHTML = w.img
+      ? `<img src="${esc(w.img)}" alt="${esc(g.name)}"><a class="credit" href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(w.file)}" target="_blank" rel="noopener">Photo: Wikimedia Commons ↗</a>`
+      : `<span style="font-size:48px">${catIcon(g.cat)}</span>`;
+    $("#ig-wiki").innerHTML = `<b>📖 From Wikipedia</b><div class="small" style="margin-top:4px">${esc(w.extract.replace(/\s*\([\s;,]*\)/g, "")) || "No summary available."}</div>
+      <div class="small" style="margin-top:6px"><a href="${esc(w.url)}" target="_blank" rel="noopener">Read “${esc(w.title)}” on Wikipedia ↗</a> <span class="muted">· text CC BY-SA 4.0</span></div>`;
+  } catch {
+    if ($("#ig-wiki")) $("#ig-wiki").innerHTML = `<b>📖 From Wikipedia</b><div class="small muted">You're offline — the photo and encyclopedia summary load once you're online (then they're saved for offline use).</div>`;
+    if ($("#ig-img")) $("#ig-img").innerHTML = `<span style="font-size:48px">${catIcon(g.cat)}</span>`;
+  }
+}
 
 // ───────────── PANTRY ─────────────
 let pantryFilter = "";
@@ -212,7 +339,7 @@ function recommend() {
 function renderDiscover() {
   const f = state.filters;
   const countries = [...new Set(RECIPES.map((r) => r.country))].sort();
-  const tags = ["batch", "freezer", "quick", "weeknight", "vegetarian", "vegan", "budget", "one pot", "meal prep", "weekend project"];
+  const tags = ["sourced", "batch", "freezer", "quick", "weeknight", "vegetarian", "vegan", "budget", "one pot", "meal prep", "weekend project"];
   const recs = recommend();
   $("#view").innerHTML = `
     <h1>Discover</h1>
@@ -264,7 +391,7 @@ function drawGrid() {
       <div class="flag">${r.flag}</div>
       <div class="name">${r.name}</div>
       <div class="native">${r.native} · ${r.country}</div>
-      <div><span class="chip diff-${r.difficulty}">${DIFF[r.difficulty]}</span>${r.tags.slice(0, 3).map((t) => `<span class="chip">${t}</span>`).join("")}</div>
+      <div><span class="chip diff-${r.difficulty}">${DIFF[r.difficulty]}</span>${r.sourced ? `<span class="badge-src" title="Researched from local recipe pages">📚 sourced</span> ` : ""}${r.tags.filter((t) => t !== "sourced").slice(0, 3).map((t) => `<span class="chip">${t}</span>`).join("")}</div>
       <div class="meta"><span>⏱ ${fmtMin(r.totalMin)}${r.advance.length ? " + soak" : ""}</span><span>🔪 ${fmtMin(r.activeMin)} hands-on</span><span>🍽 ${r.servings}</span>${hasPantry ? `<span title="ingredients you have">🏠 ${coverage(r).have}/${r.ing.length}</span>` : ""}
         ${terms.length > 1 ? `<span>✓ ${match}/${terms.length}</span>` : ""}</div>
     </div>`).join("") : `<div class="empty">No recipes match. Try fewer filters.</div>`;
@@ -315,12 +442,16 @@ function openRecipe(id, scaleServings) {
       <div>
         <h2>Ingredients</h2>
         ${Object.keys(state.pantry).length ? `<p class="small muted">🏠 You have ${cov.have} of ${cov.total} ingredients.</p>` : ""}
-        <ul class="ing">${r.ing.map((i) => `<li class="${Object.keys(state.pantry).length && !inPantry(i.k) ? "missing" : ""}"><input type="checkbox"><span class="q">${fmtQty(i.q != null ? i.q * k : null, i.u)} ${i.u}</span><span>${esc(i.n)}</span>${Object.keys(state.pantry).length ? (inPantry(i.k) ? `<span class="have-tag">✓ have</span>` : `<span class="need-tag">need</span>`) : ""}</li>`).join("")}</ul>
+        <ul class="ing">${r.ing.map((i) => `<li class="${Object.keys(state.pantry).length && !inPantry(i.k) ? "missing" : ""}"><input type="checkbox"><span class="q">${fmtQty(i.q != null ? i.q * k : null, i.u)} ${i.u}</span><span>${i.g ? `<a href="#" class="ing-link" data-ing="${i.g.id}" title="About this ingredient">${esc(i.n)}</a>` : esc(i.n)}</span>${Object.keys(state.pantry).length ? (inPantry(i.k) ? `<span class="have-tag">✓ have</span>` : `<span class="need-tag">need</span>`) : ""}</li>`).join("")}</ul>
         <h2>Skills you'll practice</h2>
         ${r.skills.map((s) => `<span class="chip skill-chip" data-skill="${s}">${SKILL_BY_ID[s].name}</span>`).join("")}
         <div class="box green"><b>🧊 Storage & batch cooking</b><br>${esc(r.store.reheat)}</div>
         <div class="box"><b>♻️ Leftover makeover</b><br>${esc(r.next)}</div>
-        <div class="box"><b>🌏 Check it against local sources</b><br><span class="small muted">Search the native dish name on sites from ${r.country}:</span><br>${sourceLinks(r) || "<span class='muted'>—</span>"}</div>
+        ${r.sourced ? `<div class="box green"><b>📚 Researched from local sources</b>
+          ${r.authenticity ? `<div class="small" style="margin:6px 0">${esc(r.authenticity)}</div>` : ""}
+          ${r.sources.map((s) => `<div class="small">↗ <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a> <span class="muted">(${esc(s.lang || "")})</span></div>`).join("")}
+          <div class="small muted" style="margin-top:6px">Written in our own words after cross-checking these pages.</div></div>` : ""}
+        <div class="box"><b>🌏 ${r.sourced ? "More local sources" : "Check it against local sources"}</b><br><span class="small muted">Search the native dish name on sites from ${r.country}:</span><br>${sourceLinks(r) || "<span class='muted'>—</span>"}</div>
       </div>
       <div>
         <h2>Method</h2>
@@ -341,6 +472,7 @@ function openRecipe(id, scaleServings) {
   };
   $$("[data-timer]").forEach((b) => b.onclick = () => { const s = r.st[+b.dataset.timer]; startTimer(`${r.name}: step ${+b.dataset.timer + 1}`, s.min); });
   $$("[data-skill]").forEach((b) => b.onclick = () => { closeModal(); location.hash = "#skills"; });
+  $$("[data-ing]").forEach((a) => a.onclick = (e) => { e.preventDefault(); openIngredient(a.dataset.ing, { recipe: id, servings }); });
   $$(".ing input").forEach((c) => c.onchange = () => c.parentElement.classList.toggle("done", c.checked));
 }
 

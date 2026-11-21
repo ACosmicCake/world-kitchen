@@ -1,9 +1,9 @@
 // Service worker: makes World Kitchen work fully offline after the first visit.
 // When you change any app file, bump VERSION so devices pick up the new copy.
-const VERSION = "wk-v4";
+const VERSION = "wk-v6";
 const APP_SHELL = [
   "./", "./index.html", "./styles.css", "./app.js",
-  "./data/recipes.js", "./data/sources.js",
+  "./data/recipes.js", "./data/extra-recipes.js", "./data/ingredients.js", "./data/sources.js",
   "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-180.png",
 ];
 
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  const isFont = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
+  const isFont = ["fonts.googleapis.com", "fonts.gstatic.com", "upload.wikimedia.org"].includes(url.hostname); // fonts + ingredient photos
   if (url.origin !== location.origin && !isFont) return; // links to recipe sources etc. go straight to the network
 
   // Stale-while-revalidate: answer instantly from cache, refresh the cache in the background.
