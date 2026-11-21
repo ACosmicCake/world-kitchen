@@ -187,13 +187,30 @@ let state = {
   extras: store.get("extras", []),      // manual grocery items
   settings: store.get("settings", { household: 1 }),
   pantry: store.get("pantry", {}),          // ingredient key -> {name, aisle, added}
+  favorites: store.get("favorites", []),     // recipe ids you've hearted
   workout: store.get("workout", { equip: "gym", level: "beginner", log: {} }), // training settings + lift log
   goals: store.get("goals", null),         // gain/maintain plan: profile, weekly schedule, prefs, last result, weigh-ins
   weekOffset: 0,
   filters: { q: "", country: "", diff: 0, maxTime: 0, tag: "", sort: "name" },
 };
-const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout"]) store.set(k, state[k]); };
+const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout", "favorites"]) store.set(k, state[k]); };
 
+const isFav = (id) => state.favorites.includes(id);
+function toggleFav(id) {
+  state.favorites = isFav(id) ? state.favorites.filter((x) => x !== id) : [...state.favorites, id];
+  save();
+}
+const heart = (id) => `<button class="fav-btn ${isFav(id) ? "on" : ""}" data-fav="${id}" title="${isFav(id) ? "Remove from favorites" : "Add to favorites"}" aria-label="Favorite">${isFav(id) ? "♥" : "♡"}</button>`;
+function renderDiscoverKeepScroll() { const y = window.scrollY; renderDiscover(); window.scrollTo(0, y); }
+// hearts work anywhere (cards, favorites row) without opening the recipe underneath
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fav]");
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  toggleFav(b.dataset.fav);
+  if ((location.hash || "#discover") === "#discover") renderDiscoverKeepScroll();
+  else { b.classList.toggle("on", isFav(b.dataset.fav)); b.textContent = isFav(b.dataset.fav) ? "♥" : "♡"; }
+}, true);
 const cookedIds = () => new Set(state.journal.map((j) => j.recipeId));
 function skillCounts() {
   const counts = {};
@@ -406,11 +423,13 @@ function recommend() {
 function renderDiscover() {
   const f = state.filters;
   const countries = [...new Set(RECIPES.map((r) => r.country))].sort();
-  const tags = ["sourced", "batch", "freezer", "quick", "weeknight", "vegetarian", "vegan", "budget", "one pot", "meal prep", "weekend project"];
+  const favs = state.favorites.map((id) => BY_ID[id]).filter(Boolean);
+  const tags = ["favorites", "sourced", "batch", "freezer", "quick", "weeknight", "vegetarian", "vegan", "budget", "one pot", "meal prep", "weekend project"];
   const recs = recommend();
   $("#view").innerHTML = `
     <h1>Discover</h1>
     <p class="sub">${RECIPES.length} traditional recipes from ${countries.length - 1} countries — each linked to native-language sources from that country.</p>
+    ${favs.length ? `<h2>♥ Your favorites (${favs.length})</h2><div class="favrow">${favs.map((r) => `<div class="favcard" data-open="${r.id}">${heart(r.id)}<span class="fl-big">${r.flag}</span><b>${r.name}</b><span class="small muted">${fmtMin(r.totalMin)} · 🔥 ${r.nut.kcal} kcal · 💵 ${fmtMoney(recipeCost(r))}</span></div>`).join("")}</div>` : ""}
     ${recs.length ? `<h2>Cook next to level up</h2><div class="recs">${recs.map(({ r, newSkills, practice }) => `
       <div class="rec" data-open="${r.id}"><span>${r.flag}</span> <b>${r.name}</b>
         <span class="chip diff-${r.difficulty}">${DIFF[r.difficulty]}</span><span class="muted small">${fmtMin(r.totalMin)}</span>
@@ -449,12 +468,12 @@ function drawGrid() {
     (!f.country || r.country === f.country) &&
     (!+f.diff || r.difficulty === +f.diff) &&
     (!+f.maxTime || r.totalMin <= +f.maxTime) &&
-    (!f.tag || r.tags.some((t) => t.includes(f.tag))));
+    (!f.tag || (f.tag === "favorites" ? isFav(r.id) : r.tags.some((t) => t.includes(f.tag)))));
   const sorters = { cheap: (a, b) => recipeCost(a.r) - recipeCost(b.r), protein: (a, b) => b.r.nut.p / b.r.nut.kcal - a.r.nut.p / a.r.nut.kcal, kcal: (a, b) => b.r.nut.kcal - a.r.nut.kcal, name: (a, b) => a.r.name.localeCompare(b.r.name), time: (a, b) => a.r.totalMin - b.r.totalMin, active: (a, b) => a.r.activeMin - b.r.activeMin, diff: (a, b) => a.r.difficulty - b.r.difficulty || a.r.totalMin - b.r.totalMin, have: (a, b) => coverage(a.r).missing.length - coverage(b.r).missing.length };
   list.sort((a, b) => (terms.length > 1 ? b.match - a.match : 0) || sorters[f.sort](a, b));
   $("#grid").innerHTML = list.length ? list.map(({ r, match }) => `
     <div class="card rcard" data-open="${r.id}">
-      ${cooked.has(r.id) ? `<span class="badge-cooked">✓ cooked</span>` : ""}
+      ${heart(r.id)}${cooked.has(r.id) ? `<span class="badge-cooked">✓ cooked</span>` : ""}
       <div class="flag">${r.flag}</div>
       <div class="name">${r.name}</div>
       <div class="native">${r.native} · ${r.country}</div>
@@ -504,6 +523,7 @@ function openRecipe(id, scaleServings) {
     <div class="row" style="margin:16px 0">
       <button class="btn primary" id="go-cook">▶ Cook mode</button>
       <button class="btn" id="go-plan">📅 Add to plan</button>
+      <button class="btn ${isFav(id) ? "fav-on" : ""}" id="go-fav">${isFav(id) ? "♥ Favorite" : "♡ Add to favorites"}</button>
       <button class="btn" id="go-log">✓ I cooked this</button>
       ${Object.keys(state.pantry).length && cov.missing.length ? `<button class="btn" id="go-missing">🛒 Add ${cov.missing.length} missing to grocery list</button>` : ""}
     </div>
@@ -535,6 +555,7 @@ function openRecipe(id, scaleServings) {
   $("#go-cook").onclick = () => { closeModal(); startCookMode(id); };
   $("#go-plan").onclick = () => addToPlanDialog(id, null, null, servings);
   $("#go-log").onclick = () => logCookDialog(id);
+  $("#go-fav").onclick = () => { toggleFav(id); openRecipe(id, servings); if (location.hash === "#discover" || !location.hash) renderDiscoverKeepScroll(); };
   if ($("#go-missing")) $("#go-missing").onclick = () => {
     for (const i of cov.missing) { const line = `${i.q != null ? fmtQty(i.q * k, i.u) + " " + i.u + " " : ""}${i.n} (for ${r.name})`; if (!state.extras.includes(line)) state.extras.push(line); }
     save(); $("#go-missing").textContent = "✓ Added to grocery list extras";
@@ -706,7 +727,7 @@ function buildWeek(costW = 0) {
   const costOf = new Map(pool.map((r) => [r.id, recipeCost(r)]));
   const avgCost = [...costOf.values()].reduce((s, c) => s + c, 0) / Math.max(1, pool.length) || 1;
   // protein per calorie, batch-friendliness, variety — and, when on a budget, cheaper dishes
-  const score = (r) => (r.nut.p / r.nut.kcal) * 100 + (r.tags.includes("batch") ? 2 : 0) + (r.store.freeze ? 1 : 0) + Math.random() * 3 - (usedC.has(r.country) ? 4 : 0) - costW * (costOf.get(r.id) / avgCost);
+  const score = (r) => (r.nut.p / r.nut.kcal) * 100 + (r.tags.includes("batch") ? 2 : 0) + (r.store.freeze ? 1 : 0) + Math.random() * 3 - (usedC.has(r.country) ? 4 : 0) + (P.favs && isFav(r.id) ? 5 : 0) - costW * (costOf.get(r.id) / avgCost);
   const choose = (ok) => {
     const c = pool.filter((r) => !usedR.has(r.id) && ok(r)).map((r) => [r, score(r)]).sort((a, b) => b[1] - a[1])[0]?.[0];
     if (c) { usedR.add(c.id); usedC.add(c.country); }
@@ -922,6 +943,7 @@ function renderGoals() {
         <label class="field">Hardest recipes to include ${sel("prefs.maxDiff", P.maxDiff, [[1, "Beginner only"], [2, "Up to intermediate"], [3, "Anything"]])}</label>
         <label class="field">Weekly food budget (${esc(currency())}) <input type="number" step="5" id="g-budget" value="${state.settings.weeklyBudget || ""}" placeholder="no limit" style="width:100px"></label>
         <label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>
+        <label class="row small"><input type="checkbox" data-g="prefs.favs" ${P.favs ? "checked" : ""}> Prefer my ♥ favorites (${state.favorites.length})</label>
         <label class="row small"><input type="checkbox" data-g="prefs.veg" ${P.veg ? "checked" : ""}> Vegetarian only</label>
         <label class="field" style="margin-top:12px">Build for ${sel("prefs.week", P.week, [["this", "This week (from today)"], ["next", "Next week"]])}</label>
         <label class="row small"><input type="checkbox" data-g="prefs.replace" ${P.replace ? "checked" : ""}> Replace meals already planned that week</label>
@@ -1105,7 +1127,7 @@ function openExercise(id) {
 }
 
 // ───────────── BACKUP / RESTORE ─────────────
-const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout"];
+const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout", "favorites"];
 function exportBackup() {
   const data = { app: "world-kitchen", version: 1, exported: new Date().toISOString(), prepStart: store.get("prepStart", "10:00") };
   for (const k of BACKUP_KEYS) data[k] = state[k];
@@ -1192,7 +1214,7 @@ function addToPlanDialog(recipeId, date, meal, servings) {
   const hh = state.settings.household;
   openModal(`
     <h2 style="margin-top:0">📅 Add to plan</h2>
-    ${pickRecipe ? `<label class="field">Recipe<select id="ap-recipe">${[...RECIPES].sort((a, b) => a.name.localeCompare(b.name)).map((x) => `<option value="${x.id}">${x.flag} ${x.name} — ${fmtMin(x.totalMin)}</option>`).join("")}</select></label>` : `<p><b>${r.flag} ${r.name}</b></p>`}
+    ${pickRecipe ? `<label class="field">Recipe<select id="ap-recipe">${[...RECIPES].sort((a, b) => isFav(b.id) - isFav(a.id) || a.name.localeCompare(b.name)).map((x) => `<option value="${x.id}">${isFav(x.id) ? "♥ " : ""}${x.flag} ${x.name} — ${fmtMin(x.totalMin)}</option>`).join("")}</select></label>` : `<p><b>${r.flag} ${r.name}</b></p>`}
     <div class="row"><label class="field">Cook on<select id="ap-date">${days.map((d) => `<option value="${ymd(d)}" ${ymd(d) === date ? "selected" : ""}>${dayLabel(d)}</option>`).join("")}</select></label>
     <label class="field">Meal<select id="ap-meal">${MEALS.map((m) => `<option ${m === meal ? "selected" : ""}>${m}</option>`).join("")}</select></label>
     <label class="field">Servings to cook<input type="number" id="ap-serv" min="1" value="${servings || (r ? r.servings : 4)}" style="width:90px"></label></div>

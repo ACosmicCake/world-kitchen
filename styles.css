@@ -222,3 +222,14 @@ ol.exlist { padding-left: 20px; margin: 6px 0; }
 ol.exlist li { padding: 6px 0; border-bottom: 1px dashed var(--line); cursor: pointer; }
 ol.exlist li:hover b { color: var(--accent); }
 .today-card { border: 2px solid var(--accent); }
+
+/* favorites */
+.fav-btn { position: absolute; top: 8px; right: 10px; border: none; background: rgba(255,255,255,.85); color: var(--muted); font-size: 20px; line-height: 1; width: 32px; height: 32px; border-radius: 50%; z-index: 2; }
+.fav-btn:hover { color: var(--accent); transform: scale(1.1); }
+.fav-btn.on { color: #e0245e; }
+.rcard .badge-cooked { right: 48px; }
+.btn.fav-on { color: #e0245e; border-color: #f3b6c8; background: #fff0f4; }
+.favrow { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+.favcard { position: relative; flex: 0 0 200px; background: #fff; border: 1px solid #f3cbd7; border-radius: var(--radius); padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.favcard:hover { box-shadow: 0 8px 24px rgba(60,40,20,.08); }
+.fl-big { font-size: 26px; }
