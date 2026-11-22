@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>World Kitchen — Cookbook & Meal Planner</title>
   <meta name="theme-color" content="#c8553d" />
-  <meta name="description" content="Authentic world recipes, batch-cooking planner, grocery list, pantry and cooking skills." />
+  <meta name="description" content="Your week, planned around your schedule: workouts, meals sized to your goals, batch cooking, groceries and stretching — with authentic world recipes." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -18,25 +18,17 @@
 <body>
   <header class="topbar">
     <div class="brand">🌏 <span>World Kitchen</span></div>
-    <nav id="tabs">
-      <a href="#discover" data-tab="discover">Discover</a>
-      <a href="#plan" data-tab="plan">Plan</a>
-      <a href="#goals" data-tab="goals">Goals</a>
-      <a href="#workouts" data-tab="workouts">Workouts</a>
-      <a href="#shop" data-tab="shop">Shop</a>
-      <a href="#pantry" data-tab="pantry">Pantry</a>
-      <a href="#ingredients" data-tab="ingredients">Ingredients</a>
-      <a href="#prep" data-tab="prep">Batch Prep</a>
-      <a href="#skills" data-tab="skills">Skills</a>
-      <a href="#journal" data-tab="journal">Journal</a>
-    </nav>
+    <nav id="tabs" aria-label="Main"></nav>
     <div class="appstatus">
       <span id="net" class="chip" title="Connection status"></span>
       <button id="install" class="btn sm primary hidden">⬇ Install app</button>
     </div>
   </header>
 
-  <main id="view"></main>
+  <main>
+    <nav id="subnav" class="subnavbar hidden" aria-label="Section"></nav>
+    <div id="view"></div>
+  </main>
 
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-backdrop" data-close></div>

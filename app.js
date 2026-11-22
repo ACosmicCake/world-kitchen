@@ -190,10 +190,11 @@ let state = {
   favorites: store.get("favorites", []),     // recipe ids you've hearted
   workout: store.get("workout", { equip: "gym", level: "beginner", log: {} }), // training settings + lift log
   goals: store.get("goals", null),         // gain/maintain plan: profile, weekly schedule, prefs, last result, weigh-ins
+  daylog: store.get("daylog", {}),         // date -> {done: [item keys], water: glasses} for the Today screen
   weekOffset: 0,
   filters: { q: "", country: "", diff: 0, maxTime: 0, tag: "", sort: "name" },
 };
-const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout", "favorites"]) store.set(k, state[k]); };
+const save = () => { for (const k of ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout", "favorites", "daylog"]) store.set(k, state[k]); };
 
 const isFav = (id) => state.favorites.includes(id);
 function toggleFav(id) {
@@ -208,7 +209,7 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   e.stopPropagation(); e.preventDefault();
   toggleFav(b.dataset.fav);
-  if ((location.hash || "#discover") === "#discover") renderDiscoverKeepScroll();
+  if (CUR.sub === "recipes") renderDiscoverKeepScroll();
   else { b.classList.toggle("on", isFav(b.dataset.fav)); b.textContent = isFav(b.dataset.fav) ? "♥" : "♡"; }
 }, true);
 const cookedIds = () => new Set(state.journal.map((j) => j.recipeId));
@@ -220,11 +221,29 @@ function skillCounts() {
 const skillLevel = (n) => (n >= 5 ? "Confident" : n >= 3 ? "Competent" : n >= 1 ? "Learning" : "Not started");
 
 // ───────────── routing ─────────────
-const views = { workouts: renderWorkouts, goals: renderGoals, ingredients: renderIngredients, pantry: renderPantry, discover: renderDiscover, plan: renderPlan, shop: renderShop, prep: renderPrep, skills: renderSkills, journal: renderJournal };
+// Everything hangs off your schedule: Today (what's now/next) → My week (schedule → one-tap plan) → the tools it uses.
+const HUBS = [
+  ["today", "🏠", "Today", [["today", "Today", () => renderToday()]]],
+  ["week", "🗓️", "My week", [["schedule", "🗓️ Schedule & plan", () => renderWeekSchedule()], ["meals", "🍽️ Meal calendar", () => renderPlan()], ["prep", "⏱ Batch-cook timeline", () => renderPrep()]]],
+  ["food", "🍲", "Food", [["recipes", "📖 Recipes", () => renderDiscover()], ["ingredients", "🧄 Ingredients", () => renderIngredients()], ["skills", "🎓 Skills", () => renderSkills()], ["journal", "📓 Journal", () => renderJournal()]]],
+  ["training", "🏋️", "Training", [["program", "📅 Program", () => renderWorkouts()], ["library", "📚 Exercises", () => renderWorkouts()], ["stretch", "🧘 Stretching", () => renderWorkouts()], ["progress", "📈 Progress", () => renderWorkouts()], ["science", "🔬 Science", () => renderWorkouts()]]],
+  ["shop", "🛒", "Shop", [["list", "🛒 Grocery list", () => renderShop()], ["pantry", "🥫 Pantry", () => renderPantry()]]],
+  ["me", "👤", "Me", [["me", "Me", () => renderMe()]]],
+];
+// old addresses still work (links inside the app, bookmarks)
+const LEGACY = { discover: ["food", "recipes"], plan: ["week", "meals"], prep: ["week", "prep"], goals: ["week", "schedule"], workouts: ["training", ""], pantry: ["shop", "pantry"], ingredients: ["food", "ingredients"], skills: ["food", "skills"], journal: ["food", "journal"] };
+let CUR = { hub: "today", sub: "today" };
+$("#tabs").innerHTML = HUBS.map(([k, ic, l]) => `<a href="#${k}" data-tab="${k}"><span class="ic">${ic}</span><span class="lb">${l}</span></a>`).join("");
 function route() {
-  const tab = (location.hash.slice(1).split("?")[0]) || "discover";
-  $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
-  (views[tab] || renderDiscover)();
+  const [tab, q = ""] = location.hash.slice(1).split("?");
+  if (LEGACY[tab]) { const [h, v] = LEGACY[tab], qs = new URLSearchParams(q); if (v && !qs.get("v")) qs.set("v", v); location.replace(`#${h}${String(qs) ? "?" + qs : ""}`); return; }
+  const hub = HUBS.find((h) => h[0] === tab) || HUBS[0];
+  const v = new URLSearchParams(q).get("v"), sub = hub[3].find((s) => s[0] === v) || hub[3][0];
+  CUR = { hub: hub[0], sub: sub[0] };
+  $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === hub[0]));
+  $("#subnav").innerHTML = hub[3].length > 1 ? hub[3].map(([k, l]) => `<a class="chip click ${k === sub[0] ? "on" : ""}" href="#${hub[0]}?v=${k}">${l}</a>`).join("") : "";
+  $("#subnav").classList.toggle("hidden", hub[3].length < 2);
+  sub[2]();
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", route);
@@ -306,7 +325,7 @@ function renderIngredients() {
   qi.oninput = () => { f.q = qi.value; renderIngredients(); const n = $("#ig-q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
   $$("[data-cat]").forEach((c) => c.onclick = () => { f.cat = c.dataset.cat; renderIngredients(); });
   $$("[data-guide]").forEach((c) => c.onclick = () => openIngredient(c.dataset.guide));
-  if (GUIDE.some((g) => !((g.imgWiki || g.wiki) in thumbs)) && navigator.onLine) loadThumbs().then(() => { if (location.hash === "#ingredients") renderIngredients(); });
+  if (GUIDE.some((g) => !((g.imgWiki || g.wiki) in thumbs)) && navigator.onLine) loadThumbs().then(() => { if (CUR.sub === "ingredients") renderIngredients(); });
 }
 
 async function openIngredient(id, back) {
@@ -427,7 +446,7 @@ function renderDiscover() {
   const tags = ["favorites", "sourced", "batch", "freezer", "quick", "weeknight", "vegetarian", "vegan", "budget", "one pot", "meal prep", "weekend project"];
   const recs = recommend();
   $("#view").innerHTML = `
-    <h1>Discover</h1>
+    <h1>Recipes</h1>
     <p class="sub">${RECIPES.length} traditional recipes from ${countries.length - 1} countries — each linked to native-language sources from that country.</p>
     ${favs.length ? `<h2>♥ Your favorites (${favs.length})</h2><div class="favrow">${favs.map((r) => `<div class="favcard" data-open="${r.id}">${heart(r.id)}<span class="fl-big">${r.flag}</span><b>${r.name}</b><span class="small muted">${fmtMin(r.totalMin)} · 🔥 ${r.nut.kcal} kcal · 💵 ${fmtMoney(recipeCost(r))}</span></div>`).join("")}</div>` : ""}
     ${recs.length ? `<h2>Cook next to level up</h2><div class="recs">${recs.map(({ r, newSkills, practice }) => `
@@ -555,7 +574,7 @@ function openRecipe(id, scaleServings) {
   $("#go-cook").onclick = () => { closeModal(); startCookMode(id); };
   $("#go-plan").onclick = () => addToPlanDialog(id, null, null, servings);
   $("#go-log").onclick = () => logCookDialog(id);
-  $("#go-fav").onclick = () => { toggleFav(id); openRecipe(id, servings); if (location.hash === "#discover" || !location.hash) renderDiscoverKeepScroll(); };
+  $("#go-fav").onclick = () => { toggleFav(id); openRecipe(id, servings); if (CUR.sub === "recipes") renderDiscoverKeepScroll(); };
   if ($("#go-missing")) $("#go-missing").onclick = () => {
     for (const i of cov.missing) { const line = `${i.q != null ? fmtQty(i.q * k, i.u) + " " + i.u + " " : ""}${i.n} (for ${r.name})`; if (!state.extras.includes(line)) state.extras.push(line); }
     save(); $("#go-missing").textContent = "✓ Added to grocery list extras";
@@ -671,14 +690,12 @@ function renderJournal() {
       : `<div class="empty">No cooks logged yet. Open a recipe and hit “I cooked this” after you make it.</div>`}`;
   $$("[data-open]").forEach((b) => b.onclick = () => openRecipe(b.dataset.open));
   $$("[data-del]").forEach((b) => b.onclick = () => { if (confirm("Delete this journal entry?")) { state.journal = state.journal.filter((j) => j.id !== b.dataset.del); save(); renderJournal(); } });
-  $("#view").insertAdjacentHTML("beforeend", `
+  if (false) $("#view").insertAdjacentHTML("beforeend", `
     <h2>💾 Your data</h2>
     <div class="box small">Everything (plan, pantry, journal, freezer, grocery extras) is stored only in this browser on this device.
       Make a backup file to keep it safe or move it to another device (e.g. your phone), then use “Restore” there.
       <div class="row" style="margin-top:10px"><button class="btn" id="bk-export">⬇ Download backup</button>
       <label class="btn">⬆ Restore from backup<input type="file" id="bk-import" accept=".json,application/json" hidden></label></div></div>`);
-  $("#bk-export").onclick = exportBackup;
-  $("#bk-import").onchange = (e) => e.target.files[0] && importBackup(e.target.files[0]);
 }
 
 // ───────────── GOALS: calorie-target planner (weight gain / maintain) ─────────────
@@ -992,7 +1009,7 @@ function buildWeek(costW = 0) {
     const items = [];
     const add = (time, kind, label, kcal = 0, p = 0, extra = {}) => items.push({ time, kind, label, kcal, p, ...extra });
     // your fixed commitments (classes, work, commute) on the timeline
-    for (const b of D.busy) add(b.start, "busy", `${BLOCK_KINDS[b.kind]?.[0] || "📌"} ${b.label} until ${hhmm(b.end)}`);
+    for (const b of D.busy) add(b.start, "busy", `${BLOCK_KINDS[b.kind]?.[0] || "📌"} ${b.label} until ${hhmm(b.end)}`, 0, 0, { end: b.end });
     for (const st of D.stretch) add(st.t, "stretch", st.label, 0, 0, { routine: st.routine });
     if (s.b !== "skip") {
       const bf = M.bGrab || s.cook <= 20 ? ADDON.oats : d.i % 2 ? ADDON["eggs-toast"] : ADDON["yogurt-bowl"];
@@ -1012,7 +1029,7 @@ function buildWeek(costW = 0) {
     }
     if (train) {
       const wo = workoutForDay(d.i);
-      add(train, "train", wo ? `Training: ${wo.name} (about ${wo.minutes} min, start with the dynamic warm-up)` : "Training");
+      add(train, "train", wo ? `Training: ${wo.name} (about ${wo.minutes} min, start with the dynamic warm-up)` : "Training", 0, 0, { end: train + (wo ? wo.minutes : 60), workout: true });
       if (M.pre != null) add(M.pre, "snack", `${ADDON.banana.name} (pre-workout)`, ADDON.banana.kcal, ADDON.banana.p);
       if (D.train) add(D.train.end, "stretch", "Cool-down stretch for the muscles you trained (≈ 5 min)", 0, 0, { routine: "cooldown" });
     }
@@ -1086,85 +1103,7 @@ function runBuilder() {
 }
 const snackInfo = (id) => SHAKE_BY_ID[id] ? { name: SHAKE_BY_ID[id].name, kcal: SHAKE_BY_ID[id].nut.kcal, p: SHAKE_BY_ID[id].nut.p } : ADDON[id];
 
-function renderGoals() {
-  const G = goals(), p = G.profile, T = calcTargets(), P = G.prefs;
-  const sel = (id, val, opts) => `<select data-g="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
-  const R = G.result;
-  $("#view").innerHTML = `
-    <h1>Goals</h1>
-    <p class="sub">Set a calorie target (for example, to gain weight) and your week. The builder tells you what to cook, on which day, how big each portion is, and what to eat around training to hit your numbers.</p>
-    <div class="two" style="grid-template-columns:1fr 1fr">
-      <div class="card"><h3>1 · Your target</h3>
-        <div class="row">
-          <label class="field">Sex ${sel("profile.sex", p.sex, [["male", "Male"], ["female", "Female"]])}</label>
-          <label class="field">Age <input type="number" data-g="profile.age" value="${p.age}" style="width:70px"></label>
-          <label class="field">Height (cm) <input type="number" data-g="profile.height" value="${p.height}" style="width:80px"></label>
-          <label class="field">Weight (kg) <input type="number" step="0.1" data-g="profile.weight" value="${p.weight}" style="width:80px"></label>
-        </div>
-        <label class="field">Activity ${sel("profile.activity", p.activity, [[1.2, "Mostly sitting, little exercise"], [1.3, "Light daily life — workouts added per day (Workouts tab)"], [1.375, "Light: 1–3 workouts a week"], [1.55, "Moderate: 3–5 workouts a week"], [1.725, "Very active: 6–7 workouts or a physical job"]])}</label>
-        <div class="row">
-          <label class="field">Goal ${sel("profile.goal", p.goal, [[0, "Maintain weight"], [250, "Lean gain (+250 kcal)"], [400, "Steady gain (+400 kcal)"], [550, "Faster gain (+550 kcal)"], ...([0, 250, 400, 550].includes(+p.goal) ? [] : [[p.goal, `Science-based for you (+${p.goal} kcal)`]])])}</label>
-          <label class="field">Protein ${sel("profile.proteinPerKg", p.proteinPerKg, [[1.6, "1.6 g/kg"], [1.8, "1.8 g/kg"], [2, "2.0 g/kg"], [2.2, "2.2 g/kg"]])}</label>
-          <label class="field">Or set kcal yourself <input type="number" data-g="profile.custom" value="${p.custom || ""}" placeholder="auto" style="width:90px"></label>
-        </div>
-        <div class="summary">
-          <div class="stat"><div class="k">Maintenance (est.)</div><div class="v">${T.tdee} kcal</div></div>
-          <div class="stat"><div class="k">Daily target</div><div class="v" style="color:var(--accent)">${T.target} kcal</div><div class="small muted">+${P.extraTrainKcal} on training days</div></div>
-          <div class="stat"><div class="k">Protein</div><div class="v">${T.protein} g</div></div>
-          <div class="stat"><div class="k">Expected change</div><div class="v">${T.perWeek > 0 ? "+" : ""}${T.perWeek} kg/wk</div></div>
-        </div>
-        <p class="small muted">Estimates (Mifflin–St Jeor formula). Bodies vary, so weigh in weekly below and adjust. This isn't medical advice. If you have a health condition, check with a professional.</p>
-      </div>
-      <div class="card"><h3>2 · Preferences</h3>
-        <label class="field">Hardest recipes to include ${sel("prefs.maxDiff", P.maxDiff, [[1, "Beginner only"], [2, "Up to intermediate"], [3, "Anything"]])}</label>
-        <label class="field">Weekly food budget (${esc(currency())}) <input type="number" step="5" id="g-budget" value="${state.settings.weeklyBudget || ""}" placeholder="no limit" style="width:100px"></label>
-        ${W().autoKcal ? `<p class="small muted">Training & cardio calories are added to each day automatically from your <a href="#workouts">Workouts</a> program.</p>` : `<label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>`}
-        <label class="row small"><input type="checkbox" data-g="prefs.favs" ${P.favs ? "checked" : ""}> Prefer my ♥ favorites (${state.favorites.length})</label>
-        <label class="row small"><input type="checkbox" data-g="prefs.veg" ${P.veg ? "checked" : ""}> Vegetarian only</label>
-        <label class="field" style="margin-top:12px">Build for ${sel("prefs.week", P.week, [["this", "This week (from today)"], ["next", "Next week"]])}</label>
-        <label class="row small"><input type="checkbox" data-g="prefs.replace" ${P.replace ? "checked" : ""}> Replace meals already planned that week</label>
-        <button class="btn primary" id="g-build" style="margin-top:14px">✨ Build my week</button>
-      </div>
-    </div>
-    ${scheduleCard()}
-    <div class="card" style="margin-top:16px;overflow-x:auto"><h3>4 · Your week</h3>
-      <p class="small muted" style="margin-top:0">How much time you have to cook each day decides when you batch-cook (60+ min), cook something quick (15–45 min), or just eat leftovers. “Suggest my best times” above fills this in for you.</p>
-      <table class="sched"><tr><th></th><th>Time to cook</th><th>Wake</th><th>Bed</th><th>Training</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>
-      ${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th>
-        <td>${sel(`schedule.${i}.cook`, s.cook, [[0, "None"], [15, "15 min"], [20, "20 min"], [30, "30 min"], [45, "45 min"], [60, "1 h"], [90, "1.5 h"], [120, "2 h"], [180, "3 h+"]])}</td>
-        <td><input type="time" data-g="schedule.${i}.wake" value="${s.wake}"></td>
-        <td><input type="time" data-g="schedule.${i}.bed" value="${bedOf(s)}"></td>
-        <td><label class="row small" style="gap:4px"><input type="checkbox" data-g="schedule.${i}.train" ${s.train ? "checked" : ""}> <input type="time" data-g="schedule.${i}.trainAt" value="${s.trainAt}" ${s.train ? "" : "disabled"}></label></td>
-        <td>${sel(`schedule.${i}.b`, s.b, [["home", "At home"], ["skip", "Skip"]])}</td>
-        <td>${sel(`schedule.${i}.l`, s.l, [["home", "At home"], ["packed", "Packed"], ["out", "Eat out"]])}</td>
-        <td>${sel(`schedule.${i}.d`, s.d, [["home", "At home"], ["out", "Eat out"]])}</td></tr>`).join("")}</table>
-    </div>
-    <div id="g-result">${R ? renderGoalResult(R) : ""}</div>
-    <div class="card" style="margin-top:16px"><h3>⚖️ Weekly weigh-in</h3>
-      <p class="small muted" style="margin-top:0">Weigh yourself once a week, same day and time (for example, Monday morning before breakfast). After 2+ weeks the app suggests whether to adjust.</p>
-      <div class="row"><input type="date" id="w-date" value="${ymd(new Date())}"><input type="number" step="0.1" id="w-kg" placeholder="kg" style="width:90px"><button class="btn" id="w-add">Add</button></div>
-      ${weighInSummary()}
-    </div>`;
-  $$("[data-g]").forEach((el) => el.onchange = () => {
-    const path = el.dataset.g.split(".");
-    let o = G; for (const k of path.slice(0, -1)) o = o[k];
-    const last = path[path.length - 1];
-    o[last] = el.type === "checkbox" ? el.checked : el.type === "number" || /^(activity|goal|proteinPerKg|cook|maxDiff)$/.test(last) ? +el.value : el.value;
-    if (last === "weight" && +el.value > 0) o.weight = +el.value;
-    save(); renderGoals();
-  });
-  $("#g-budget").onchange = (e) => { state.settings.weeklyBudget = Math.max(0, +e.target.value || 0); save(); renderGoals(); };
-  bindScheduleCard();
-  $("#g-build").onclick = () => { runBuilder(); renderGoals(); $("#g-result").scrollIntoView({ behavior: "smooth" }); };
-  $("#w-add").onclick = () => {
-    const kg = +$("#w-kg").value; if (!kg) return;
-    G.weighIns = (G.weighIns || []).filter((w) => w.date !== $("#w-date").value).concat({ date: $("#w-date").value, kg }).sort((a, b) => a.date.localeCompare(b.date));
-    G.profile.weight = kg; save(); renderGoals();
-  };
-  if ($("#w-apply")) $("#w-apply").onclick = () => { G.profile.custom = 0; G.profile.goal = +G.profile.goal + +$("#w-apply").dataset.delta; save(); renderGoals(); };
-  $$("#g-result [data-open]").forEach((el) => el.onclick = () => openRecipe(el.dataset.open));
-  $$("[data-prepsess]").forEach((b) => b.onclick = () => { prepSelection = b.dataset.prepsess.split(","); location.hash = "#prep"; });
-}
+function renderGoals() { (CUR.hub === "me" ? renderMe : renderWeekSchedule)(); }
 
 function renderGoalResult(R) {
   const icon = { shake: "🥤", breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️", busy: "", stretch: "🧘" };
@@ -1172,9 +1111,10 @@ function renderGoalResult(R) {
   const avg = live.length ? Math.round(live.reduce((a, d) => a + d.kcal, 0) / live.length) : 0;
   return `
     <h2>Your plan for the week of ${dayLabel(parseYmd(R.week))}</h2>
-    <div class="row"><a class="btn" href="#plan">📅 See it in the meal plan</a><a class="btn" href="#shop">🛒 Grocery list</a><span class="muted small">Average ≈ ${avg} kcal/day</span>
+    <div class="row"><a class="btn primary" href="#today">🏠 Today’s plan</a><a class="btn" href="#week?v=meals">🍽️ Meal calendar</a><a class="btn" href="#shop">🛒 Grocery list</a><span class="muted small">Average ≈ ${avg} kcal/day</span>
       ${R.cost != null ? `<span class="chip ${R.budget && R.cost > R.budget ? "diff-3" : "diff-1"}">💵 Food ≈ ${fmtMoney(R.cost)}${R.budget ? ` / ${fmtMoney(R.budget)} budget` : " this week"}</span>` : ""}</div>
     ${R.notes.length ? `<div class="box amber small">${R.notes.map(esc).join("<br>")}</div>` : ""}
+    ${R.why ? whyTimes(R.why) : ""}
     ${R.sessions.length ? `<h3 style="margin-top:18px">🔥 When to cook</h3>${R.sessions.map((s) => `<div class="box green"><b>${dayLabel(parseYmd(s.date))}, ${hhmm(s.start)} to ${hhmm(s.start + s.minutes)}</b>: ${s.recipes.map((id) => `<a href="#" data-open="${id}">${BY_ID[id].name}</a>`).join(" + ")}
       <span class="small muted">(${fmtMin(s.minutes)} cooked together, ${fmtMin(s.handsOn)} hands-on)</span>${s.frozen.length ? `<div class="small">🧊 Freeze: ${s.frozen.map(esc).join(", ")}</div>` : ""}
       <div><button class="btn sm" data-prepsess="${s.recipes.join(",")}" style="margin-top:6px">⏱ Step-by-step session timeline</button></div></div>`).join("")}` : ""}
@@ -1184,9 +1124,275 @@ function renderGoalResult(R) {
       <div class="bar"><div style="width:${Math.min(100, (d.kcal / d.target) * 100)}%;background:${Math.abs(d.kcal - d.target) <= 150 ? "var(--green)" : "var(--amber)"}"></div></div>
       <div class="small muted">💪 Protein ${d.p} / ${d.ptarget} g</div>
       <div class="health small">💧 2.5–3 L water · 🥦 5+ fruit & veg portions · 😴 lights out ${d.sleep || "by 23:00"}${d.train ? "" : " · 🚶 30-min walk (rest day)"}</div>
-      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}${x.shake ? " k-shake" : ""}"><span class="time">${hhmm(x.time)}</span> ${x.shake ? "🥤" : x.kind === "train" ? `<a href="#workouts" title="Open workout">🏋️</a>` : icon[x.kind] ?? "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : x.routine ? `<a href="#workouts?v=stretch">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
+      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}${x.shake ? " k-shake" : ""}"><span class="time">${hhmm(x.time)}</span> ${x.shake ? "🥤" : x.kind === "train" ? `<a href="#training" title="Open workout">🏋️</a>` : icon[x.kind] ?? "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : x.routine ? `<a href="#training?v=stretch">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
     </div>`).join("")}</div>
     <div class="box blue small" style="margin-top:12px"><b>Tips for gaining:</b> eat every 3–4 hours rather than forcing huge meals. Drink some of your calories (milk, smoothies) if you get full easily. Keep a protein source in every meal. If the scale hasn't moved after 2 weeks, add about 150 kcal a day.</div>`;
+}
+
+// ───────────── TODAY: the home screen — your day from your schedule, what's now / next, one-tap actions ─────────────
+const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+const todayIdx = () => (new Date().getDay() + 6) % 7;
+function dayLog(date) {
+  const L = state.daylog || (state.daylog = {});
+  for (const k of Object.keys(L)) if (k < ymd(addDays(new Date(), -30))) delete L[k];   // keep a month
+  return L[date] || (L[date] = { done: [], water: 0 });
+}
+const itemKey = (x) => `${x.kind}|${x.label}`;
+const routineName = (r) => (r === "cooldown" ? "Cool-down" : STR_ROUT[r]?.name || r);
+const TL_ICON = { shake: "🥤", breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️", busy: "", stretch: "🧘" };
+// Today's items: from the built plan if it covers today, otherwise straight from your schedule + meal calendar.
+function todayItems() {
+  const G = goals(), date = ymd(new Date()), i = todayIdx();
+  const day = G.result?.days?.find((x) => x.date === date && !x.past);
+  if (day) return { items: day.items, built: true, day };
+  const D = dayInfo(i), M = D.meals, items = [];
+  const add = (time, kind, label, extra = {}) => items.push({ time, kind, label, kcal: 0, p: 0, ...extra });
+  for (const b of D.busy) add(b.start, "busy", `${BLOCK_KINDS[b.kind]?.[0] || "📌"} ${b.label} until ${hhmm(b.end)}`, { end: b.end });
+  add(M.b, "breakfast", M.bGrab ? "Breakfast (grab-and-go)" : "Breakfast");
+  const planned = state.plan.filter((p) => p.date === date && BY_ID[p.recipeId]);
+  for (const [meal, t] of [["lunch", M.l], ["dinner", M.d]]) {
+    const e = planned.find((p) => p.meal === meal), r = e && BY_ID[e.recipeId];
+    if (r) { add(t, meal, `${r.name}${e.type === "leftover" ? " (leftovers)" : e.type === "freezer" ? " (from the freezer)" : ""}`, { recipe: r.id }); if (e.type === "cook") add(t - r.totalMin - 5, "cook", `Cook ${r.name} (${fmtMin(r.totalMin)})`, { recipe: r.id }); }
+    else add(t, meal, meal === "lunch" ? `Lunch${M.lWhere === "packed" ? " (packed)" : ""}` : "Dinner");
+  }
+  const preps = planned.filter((p) => p.meal === "prep");
+  if (preps.length) add(D.cook.at ?? 10 * 60, "cook", `Batch cook: ${preps.map((p) => BY_ID[p.recipeId].name).join(" + ")}`, { session: true, recipes: preps.map((p) => p.recipeId) });
+  for (const t of M.snacks) add(t, "snack", "Snack (protein + carbs)");
+  if (D.train) { const wo = workoutForDay(i); add(D.train.start, "train", `Training: ${wo?.name || "workout"} (about ${D.train.end - D.train.start} min)`, { end: D.train.end, workout: true }); add(D.train.end, "stretch", "Cool-down stretch (≈ 5 min)", { routine: "cooldown" }); }
+  if (M.pre != null) add(M.pre, "snack", "Pre-workout snack (banana or toast)");
+  for (const s of D.stretch) add(s.t, "stretch", s.label, { routine: s.routine });
+  if (D.cardioMin && D.cardioAt != null) add(D.cardioAt, "train", `${cardioPlan().opt.name}: ${D.cardioMin} min`);
+  items.sort((a, b) => a.time - b.time);
+  return { items, built: false };
+}
+function setupSteps() {
+  const G = goals(), R = G.result;
+  return [
+    { done: !!G.profileSet || JSON.stringify(G.profile) !== JSON.stringify(defaultGoals().profile) || (G.weighIns || []).length > 0, label: "Tell the app about you", sub: "Age, height, weight and your goal set your calories and protein.", href: "#me" },
+    { done: (G.schedule || []).some((s) => (s.blocks || []).length) || !!G.noCommit, label: "Add your classes, work & commute", sub: "Your schedule decides when you train, eat, cook and stretch.", href: "#week" },
+    { done: !!R && R.days?.some((d) => d.date >= ymd(new Date())), label: "Plan my week", sub: "One tap: workout times, meals sized to your target, batch-cook days and the grocery list.", href: "#week" },
+  ];
+}
+function renderToday() {
+  const G = goals(), date = ymd(new Date()), i = todayIdx(), now = nowMin(), log = dayLog(date), w = W();
+  const { items, built, day } = todayItems();
+  const wo = workoutForDay(i);
+  const autoDone = (x) => (x.workout && w.sessions.some((s) => s.date === date)) || (x.routine && (w.stretchLog || []).some((l) => l.date === date && l.name === routineName(x.routine)));
+  const isDone = (x) => log.done.includes(itemKey(x)) || autoDone(x);
+  const endOf = (x) => x.end ?? x.time + (x.kind === "cook" ? 30 : 15);
+  const current = items.filter((x) => x.time <= now && now < endOf(x) && !isDone(x)).sort((a, b) => (b.kind === "busy") - (a.kind === "busy"))[0];
+  const next = items.find((x) => x.time > now && !isDone(x) && x !== current) || items.find((x) => x.time >= now - 60 && !isDone(x) && x.kind !== "busy" && x !== current);
+  const T = calcTargets(), target = day?.target ?? dayTarget(i);
+  const eaten = items.filter((x) => isDone(x) && x.kcal).reduce((t, x) => t + x.kcal, 0), prot = items.filter((x) => isDone(x) && x.p).reduce((t, x) => t + x.p, 0);
+  const stretched = (w.stretchLog || []).filter((l) => l.date === date).length, trained = w.sessions.some((s) => s.date === date);
+  const steps = setupSteps(), setupLeft = steps.filter((s) => !s.done).length;
+  const greet = now < 12 * 60 ? "Good morning" : now < 18 * 60 ? "Good afternoon" : "Good evening";
+  const act = (x) => {
+    if (x.workout && wo) return `<button class="btn sm primary" data-act="workout">▶ Start workout</button>`;
+    if (x.routine) return `<button class="btn sm primary" data-act="stretch:${x.routine}">▶ Start</button>`;
+    if (x.kind === "cook" && (x.session || /^Batch cook/.test(x.label))) return `<button class="btn sm primary" data-act="session">⏱ Session steps</button>`;
+    if (x.kind === "cook" && x.recipe) return `<button class="btn sm primary" data-act="cook:${x.recipe}">👩‍🍳 Cook mode</button>`;
+    if (x.recipe) return `<button class="btn sm" data-act="recipe:${x.recipe}">Recipe</button>`;
+    return "";
+  };
+  const icon = (x) => (x.shake ? "🥤" : TL_ICON[x.kind] ?? "•");
+  const until = (t) => { const m = t - now; return m < 60 ? `in ${m} min` : `in ${Math.floor(m / 60)} h ${m % 60 ? (m % 60) + " min" : ""}`; };
+  const R = G.result, sessionsThisWeek = R?.sessions || [];
+  const wk = Array.from({ length: 7 }, (_, k) => ymd(addDays(mondayOf(new Date()), k)));
+  $("#view").innerHTML = `
+    <div class="row"><div><h1 style="margin:0">${greet} 👋</h1><div class="muted">${new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}${G.schedule[i].train ? " · training day" : " · rest day"}</div></div>
+      <span class="spacer"></span><a class="btn hide-phone" href="#week">🗓️ My week</a></div>
+    <div class="todayhero">
+      ${current ? `<div class="now"><span class="k">NOW</span> ${icon(current)} ${esc(current.label)} ${act(current)}</div>` : ""}
+      ${next ? `<div class="next"><div class="k">UP NEXT · ${hhmm(next.time)}${next.time > now ? ` · ${until(next.time)}` : ""}</div>
+        <div class="t">${icon(next)} ${esc(next.label)}</div>
+        <div class="row" style="margin-top:10px">${act(next)}${next.kind !== "busy" ? `<button class="btn sm" data-chk="${esc(itemKey(next))}">✓ Done</button>` : ""}</div></div>`
+      : `<div class="next"><div class="k">ALL DONE</div><div class="t">Nothing else planned today. ${G.schedule[i].bed ? `Lights out ${esc(bedOf(G.schedule[i]))}.` : ""} 😴</div></div>`}
+    </div>
+    ${setupLeft && !G.setupHidden ? `<div class="card setup"><div class="row"><h3 style="margin:0">Set up your week · ${3 - setupLeft}/3 done</h3><span class="spacer"></span><button class="btn sm ghost" id="setup-hide">Hide</button></div>
+      <ol class="setupsteps">${steps.map((s) => `<li class="${s.done ? "done" : ""}"><a href="${s.href}"><b>${s.done ? "✅" : "○"} ${s.label}</b><span class="small muted">${s.sub}</span></a></li>`).join("")}</ol></div>` : ""}
+    <div class="summary todaystats">
+      <div class="stat"><div class="k">Calories eaten</div><div class="v">${eaten} <span class="small muted">/ ${target}</span></div><div class="bar"><div style="width:${Math.min(100, (eaten / target) * 100)}%;background:var(--green)"></div></div></div>
+      <div class="stat"><div class="k">Protein</div><div class="v">${prot} <span class="small muted">/ ${T.protein} g</span></div><div class="bar"><div style="width:${Math.min(100, (prot / T.protein) * 100)}%;background:var(--blue)"></div></div></div>
+      <div class="stat"><div class="k">Water</div><div class="v">${"💧".repeat(Math.min(log.water, 10))}${log.water > 10 ? "+" : ""}<span class="small muted"> ${log.water}/10 glasses</span></div><div class="row" style="gap:4px"><button class="btn sm" data-water="-1">−</button><button class="btn sm" data-water="1">+ glass</button></div></div>
+      <div class="stat"><div class="k">Moved today</div><div class="v small">${G.schedule[i].train ? (trained ? "🏋️ workout ✅" : "🏋️ workout to do") : "🚶 rest day"}<br>🧘 ${stretched} stretch session${stretched === 1 ? "" : "s"}</div></div>
+    </div>
+    ${!built ? `<div class="box blue small">This is your day from your schedule${state.plan.some((p) => p.date === date) ? " and meal calendar" : ""}. <a href="#week">Plan my week</a> to get meals and snacks sized to your ${target}-kcal target.</div>` : ""}
+    <h2>Today’s timeline</h2>
+    <ul class="today-tl">${items.map((x) => { const done = isDone(x), past = endOf(x) <= now, isNow = x === current, isNext = x === next;
+      return `<li class="k-${x.kind}${done ? " done" : ""}${past && !done ? " past" : ""}${isNow ? " now" : ""}${isNext ? " nextup" : ""}">
+        <span class="time">${hhmm(x.time)}</span>
+        ${x.kind === "busy" ? `<span class="chk ghost"></span>` : `<button class="chk" data-chk="${esc(itemKey(x))}" title="${done ? "Undo" : "Mark done"}">${done ? "✓" : ""}</button>`}
+        <span class="lbl">${icon(x)} ${x.recipe ? `<a href="#" data-act="recipe:${x.recipe}">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted small">${x.kcal} kcal${x.p ? ` · ${x.p} g protein` : ""}</span>` : ""}</span>
+        <span class="acts">${done ? "" : act(x).replace('class="btn sm primary"', 'class="btn sm"')}</span></li>`; }).join("") || `<li class="muted">Nothing scheduled yet. <a href="#week">Set up your week</a>.</li>`}</ul>
+    <h2>This week</h2>
+    <div class="weekstrip">${wk.map((d, k) => { const s = G.schedule[k], sess = sessionsThisWeek.find((x) => x.date === d), nb = (s.blocks || []).length;
+      return `<a href="#week" class="wsday ${d === date ? "on" : ""} ${d < date ? "pastday" : ""}"><b>${DAYS[k]}</b><span>${s.train ? "🏋️" : "🚶"}${sess ? "🔥" : ""}</span><span class="small muted">${nb ? `${nb} block${nb > 1 ? "s" : ""}` : "free"}</span></a>`; }).join("")}</div>
+    <p class="small muted">🏋️ training · 🚶 rest/cardio · 🔥 batch-cook day. Tap a day to see or change your week.</p>`;
+  // actions
+  $$("[data-chk]").forEach((b) => b.onclick = () => { const k = b.dataset.chk; log.done = log.done.includes(k) ? log.done.filter((x) => x !== k) : [...log.done, k]; save(); renderToday(); });
+  $$("[data-water]").forEach((b) => b.onclick = () => { log.water = Math.max(0, log.water + +b.dataset.water); save(); renderToday(); });
+  if ($("#setup-hide")) $("#setup-hide").onclick = () => { G.setupHidden = true; save(); renderToday(); };
+  $$("[data-act]").forEach((b) => b.onclick = (e) => {
+    e.preventDefault();
+    const [kind, arg] = b.dataset.act.split(":");
+    if (kind === "recipe") openRecipe(arg);
+    else if (kind === "cook") startCookMode(arg);
+    else if (kind === "workout") startWorkoutMode(wo.session);
+    else if (kind === "stretch") { if (arg === "cooldown") { const s = wo?.session || buildProgram()?.week[0]; if (s) startStretchMode("Cool-down", cooldownFor(s)); } else startStretchMode(STR_ROUT[arg].name, routineItems(STR_ROUT[arg])); }
+    else if (kind === "session") { const sess = (G.result?.sessions || []).find((s) => s.date === date); const it = items.find((x) => x.session); prepSelection = sess?.recipes || it?.recipes || null; location.hash = "#week?v=prep"; }
+  });
+}
+
+// ───────────── MY WEEK: your schedule → one tap plans training, meals, batch cooking, shopping & stretching ─────────────
+let schedEditOpen = null;
+const gSel = (id, val, opts) => `<select data-g="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+function bindGoalInputs(rerender) {
+  const G = goals();
+  $$("[data-g]").forEach((el) => el.onchange = () => {
+    const path = el.dataset.g.split(".");
+    let o = G; for (const k of path.slice(0, -1)) o = o[k];
+    const last = path[path.length - 1];
+    o[last] = el.type === "checkbox" ? el.checked : el.type === "number" || /^(activity|goal|proteinPerKg|cook|maxDiff)$/.test(last) ? +el.value : el.value;
+    if (path[0] === "profile") G.profileSet = true;
+    save(); rerender();
+  });
+}
+function planMyWeek() {
+  const G = goals(), P = G.prefs, C = cmt();
+  let S = null;
+  if (P.autoTimes !== false) { S = suggestWeek(C.perWeek); applySuggestion(S); }
+  runBuilder();
+  if (S) { G.result.notes.unshift(...S.notes); G.result.why = S.days.filter((d) => d.tr).map((d) => `${DAYS[d.i]} ${hhmm(d.tr.start)}: ${d.tr.why.filter(Boolean).join("; ") || "best free window"}`); }
+  save();
+}
+function whyTimes(why) {
+  return `<details class="small box"><summary><b>Why these times?</b></summary><ul>${why.map((w) => `<li>${esc(w)}</li>`).join("")}
+    <li>Late afternoon/evening is when strength tends to peak, but morning and evening training build muscle equally, so consistency wins (Grgic 2019).</li>
+    <li>Workouts end at least 1 hour before bed: hard exercise right before sleep is the only kind shown to disturb it (Stutz 2019).</li>
+    <li>Sessions are spread out for recovery; the same start time each day builds the habit.</li>
+    <li>Meals every 3–4 hours with protein (ISSN), a meal or shake within ~2 h after training (Schoenfeld 2013), dinner 2+ h before bed when possible.</li>
+    <li>Batch cooking happens on the 2 days with the most free time; desk stretches break up 90+ minutes of sitting (WHO 2020).</li></ul></details>`;
+}
+function renderWeekSchedule() {
+  const G = goals(), P = G.prefs, C = cmt(), R = G.result;
+  const nBlocks = G.schedule.reduce((t, s) => t + (s.blocks || []).length, 0);
+  if (schedEditOpen === null) schedEditOpen = !nBlocks && !G.noCommit;
+  const opt = (v, cur, l) => `<option value="${v}" ${String(v) === String(cur) ? "selected" : ""}>${l}</option>`;
+  $("#view").innerHTML = `
+    <h1>My week</h1>
+    <p class="sub">Your schedule drives everything. Add classes, work and commute once; then one tap plans your workouts, meals, batch cooking, grocery list and stretching around them.</p>
+    <div class="card planhero">
+      <div class="row">
+        <div class="steps3"><span class="${nBlocks || G.noCommit ? "ok" : ""}">1 Schedule</span><span class="${setupSteps()[0].done ? "ok" : ""}">2 <a href="#me">Targets</a></span><span class="${R ? "ok" : ""}">3 Plan</span></div>
+        <span class="spacer"></span>
+        <label class="field">Plan ${gSel("prefs.week", P.week, [["this", "this week (from today)"], ["next", "next week"]])}</label>
+        <label class="field">Workouts / week <select id="sg-n">${[0, 2, 3, 4, 5, 6].map((n) => opt(n, C.perWeek, n || "none")).join("")}</select></label>
+        <button class="btn primary bigbtn" id="plan-go">✨ Plan my week</button>
+      </div>
+      <div class="row small" style="margin-top:6px">
+        <label class="row small"><input type="checkbox" data-g="prefs.autoTimes" ${P.autoTimes !== false ? "checked" : ""}> Pick my training times & batch-cook days for me</label>
+        <label class="row small"><input type="checkbox" data-g="prefs.replace" ${P.replace ? "checked" : ""}> Replace meals already planned that week</label>
+        <span class="muted">Daily target ${calcTargets().target} kcal · ${calcTargets().protein} g protein (<a href="#me">change</a>)</span>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="row"><h3 style="margin:0">Your week at a glance</h3><span class="spacer"></span><button class="btn sm ${schedEditOpen ? "" : "primary"}" id="edit-sched">${schedEditOpen ? "Done editing" : `✏️ ${nBlocks ? "Edit" : "Add"} classes, work & commute`}</button></div>
+      ${schedEditOpen ? scheduleCard() : ""}
+      ${weekGlance()}
+    </div>
+    <details class="card" style="margin-top:16px;overflow-x:auto" ${schedEditOpen ? "" : ""}><summary><b>Fine-tune each day</b> <span class="small muted">wake & bed times, cooking time, training, where you eat</span></summary>
+      <table class="sched" style="margin-top:10px"><tr><th></th><th>Time to cook</th><th>Wake</th><th>Bed</th><th>Training</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>
+      ${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th>
+        <td>${gSel(`schedule.${i}.cook`, s.cook, [[0, "None"], [15, "15 min"], [20, "20 min"], [30, "30 min"], [45, "45 min"], [60, "1 h"], [90, "1.5 h"], [120, "2 h"], [180, "3 h+"]])}</td>
+        <td><input type="time" data-g="schedule.${i}.wake" value="${s.wake}"></td>
+        <td><input type="time" data-g="schedule.${i}.bed" value="${bedOf(s)}"></td>
+        <td><label class="row small" style="gap:4px"><input type="checkbox" data-g="schedule.${i}.train" ${s.train ? "checked" : ""}> <input type="time" data-g="schedule.${i}.trainAt" value="${s.trainAt}" ${s.train ? "" : "disabled"}></label></td>
+        <td>${gSel(`schedule.${i}.b`, s.b, [["home", "At home"], ["skip", "Skip"]])}</td>
+        <td>${gSel(`schedule.${i}.l`, s.l, [["home", "At home"], ["packed", "Packed"], ["out", "Eat out"]])}</td>
+        <td>${gSel(`schedule.${i}.d`, s.d, [["home", "At home"], ["out", "Eat out"]])}</td></tr>`).join("")}</table>
+      <p class="small muted">With “Pick my training times” on, Plan my week overwrites training days/times and cooking time here. Turn it off to keep your own.</p>
+    </details>
+    <div id="g-result">${R ? renderGoalResult(R) : `<div class="empty" style="margin-top:16px">No plan yet. Add your schedule above, then press <b>✨ Plan my week</b>.</div>`}</div>`;
+  bindGoalInputs(renderWeekSchedule);
+  if (schedEditOpen) bindScheduleCard();
+  $("#edit-sched").onclick = () => { schedEditOpen = !schedEditOpen; renderWeekSchedule(); };
+  $("#sg-n").onchange = (e) => { C.perWeek = +e.target.value; save(); };
+  $("#plan-go").onclick = () => {
+    if (!+C.perWeek) { G.schedule.forEach((s) => (s.train = false)); }
+    planMyWeek(); schedEditOpen = false; renderWeekSchedule();
+    $("#g-result").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  $$("#g-result [data-open]").forEach((el) => el.onclick = (e) => { e.preventDefault(); openRecipe(el.dataset.open); });
+  $$("[data-prepsess]").forEach((b) => b.onclick = () => { prepSelection = b.dataset.prepsess.split(","); location.hash = "#week?v=prep"; });
+}
+
+// ───────────── ME: body, targets, preferences, weigh-ins and your data ─────────────
+function renderMe() {
+  const G = goals(), p = G.profile, T = calcTargets(), P = G.prefs, w = W(), TP = trainingProfile();
+  $("#view").innerHTML = `
+    <h1>Me</h1>
+    <p class="sub">Your body, goal and preferences set the daily calorie & protein targets that every plan uses.</p>
+    <div class="two" style="grid-template-columns:1fr 1fr">
+      <div class="card"><h3>About you & your target</h3>
+        <div class="row">
+          <label class="field">Sex ${gSel("profile.sex", p.sex, [["male", "Male"], ["female", "Female"]])}</label>
+          <label class="field">Age <input type="number" data-g="profile.age" value="${p.age}" style="width:70px"></label>
+          <label class="field">Height (cm) <input type="number" data-g="profile.height" value="${p.height}" style="width:80px"></label>
+          <label class="field">Weight (kg) <input type="number" step="0.1" data-g="profile.weight" value="${p.weight}" style="width:80px"></label>
+        </div>
+        <div class="row">
+          <label class="field">Goal ${gSel("profile.goal", p.goal, [[0, "Maintain weight"], [250, "Lean gain (+250 kcal)"], [400, "Steady gain (+400 kcal)"], [550, "Faster gain (+550 kcal)"], ...([0, 250, 400, 550].includes(+p.goal) ? [] : [[p.goal, `Science-based for you (+${p.goal} kcal)`]])])}</label>
+          <label class="field">Protein ${gSel("profile.proteinPerKg", p.proteinPerKg, [[1.6, "1.6 g/kg"], [1.8, "1.8 g/kg"], [2, "2.0 g/kg"], [2.2, "2.2 g/kg"]])}</label>
+        </div>
+        <label class="field">Daily activity ${gSel("profile.activity", p.activity, [[1.2, "Mostly sitting, little exercise"], [1.3, "Light daily life — workouts added per day (recommended)"], [1.375, "Light: 1–3 workouts a week"], [1.55, "Moderate: 3–5 workouts a week"], [1.725, "Very active: 6–7 workouts or a physical job"]])}</label>
+        <label class="field">Or set calories yourself <input type="number" data-g="profile.custom" value="${p.custom || ""}" placeholder="auto" style="width:90px"></label>
+        <div class="summary">
+          <div class="stat"><div class="k">Maintenance</div><div class="v">${T.tdee} kcal</div></div>
+          <div class="stat"><div class="k">Daily target</div><div class="v" style="color:var(--accent)">${T.target} kcal</div><div class="small muted">${w.autoKcal ? "+ each day’s training & cardio" : `+${P.extraTrainKcal} on training days`}</div></div>
+          <div class="stat"><div class="k">Protein</div><div class="v">${T.protein} g</div></div>
+          <div class="stat"><div class="k">Expected</div><div class="v">${T.perWeek > 0 ? "+" : ""}${T.perWeek} kg/wk</div></div>
+        </div>
+        <div class="row"><button class="btn primary sm" id="me-sci">🔬 Use science-based targets for me</button><span class="small muted">+${TP.surplus} kcal (≈ ${TP.ratePct}% body weight/week), ${TP.protein} g/kg protein</span></div>
+        <p class="small muted">Estimates (Mifflin–St Jeor). Weigh in weekly and adjust. Not medical advice.</p>
+      </div>
+      <div>
+        <div class="card"><h3>Food preferences</h3>
+          <label class="field">Hardest recipes to include ${gSel("prefs.maxDiff", P.maxDiff, [[1, "Beginner only"], [2, "Up to intermediate"], [3, "Anything"]])}</label>
+          <label class="field">Weekly food budget (${esc(currency())}) <input type="number" step="5" id="g-budget" value="${state.settings.weeklyBudget || ""}" placeholder="no limit" style="width:100px"></label>
+          ${w.autoKcal ? "" : `<label class="field">Extra calories on training days <input type="number" step="50" data-g="prefs.extraTrainKcal" value="${P.extraTrainKcal}" style="width:90px"></label>`}
+          <label class="row small"><input type="checkbox" data-g="prefs.favs" ${P.favs ? "checked" : ""}> Prefer my ♥ favorite recipes (${state.favorites.length})</label>
+          <label class="row small"><input type="checkbox" data-g="prefs.veg" ${P.veg ? "checked" : ""}> Vegetarian only</label>
+          <p class="small muted">Prices & currency: <a href="#shop">Shop → Prices & budget</a>.</p>
+        </div>
+        <div class="card" style="margin-top:16px"><h3>Training setup</h3>
+          <p class="small" style="margin:0">${esc(w.level)} · ${w.equip === "gym" ? "gym" : w.equip === "home" ? "home (dumbbells + bands)" : "no equipment"} · ${w.sessionMin}-min sessions · goal: ${w.wgoal}${w.limits.length ? ` · go easy on ${w.limits.join(", ")}` : ""}</p>
+          <a class="btn sm" href="#training" style="margin-top:8px">Change in Training → Program</a>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>⚖️ Weekly weigh-in</h3>
+      <p class="small muted" style="margin-top:0">Same day and time each week (e.g. Monday before breakfast). After 2+ weeks the app suggests whether to adjust.</p>
+      <div class="row"><input type="date" id="w-date" value="${ymd(new Date())}"><input type="number" step="0.1" id="w-kg" placeholder="kg" style="width:90px"><button class="btn" id="w-add">Add</button></div>
+      ${weighInSummary()}
+    </div>
+    <div class="card" style="margin-top:16px"><h3>💾 Your data</h3>
+      <p class="small muted" style="margin-top:0">Everything is stored only in this browser on this device. Download a backup to keep it safe or move it to your phone, then use “Restore” there.</p>
+      <div class="row"><button class="btn" id="bk-export">⬇ Download backup</button><label class="btn">⬆ Restore from backup<input type="file" id="bk-import" accept=".json,application/json" hidden></label>
+        <button class="btn ghost sm" id="me-setup">Show the setup checklist again</button></div>
+    </div>`;
+  bindGoalInputs(renderMe);
+  $("#g-budget").onchange = (e) => { state.settings.weeklyBudget = Math.max(0, +e.target.value || 0); save(); renderMe(); };
+  $("#me-sci").onclick = () => { p.goal = TP.surplus; p.custom = 0; p.proteinPerKg = TP.protein; p.activity = w.autoKcal ? 1.3 : TP.days >= 5 ? 1.725 : TP.days >= 3 ? 1.55 : 1.375; G.profileSet = true; save(); renderMe(); };
+  $("#w-add").onclick = () => {
+    const kg = +$("#w-kg").value; if (!kg) return;
+    G.weighIns = (G.weighIns || []).filter((x) => x.date !== $("#w-date").value).concat({ date: $("#w-date").value, kg }).sort((a, b) => a.date.localeCompare(b.date));
+    G.profile.weight = kg; save(); renderMe();
+  };
+  if ($("#w-apply")) $("#w-apply").onclick = () => { G.profile.custom = 0; G.profile.goal = +G.profile.goal + +$("#w-apply").dataset.delta; save(); renderMe(); };
+  $("#bk-export").onclick = exportBackup;
+  $("#bk-import").onchange = (e) => e.target.files[0] && importBackup(e.target.files[0]);
+  $("#me-setup").onclick = () => { G.setupHidden = false; save(); location.hash = "#today"; };
 }
 
 // ───── Schedule card (Goals step 3): commitments, commute, week at a glance, suggestions ─────
@@ -1194,8 +1400,7 @@ function scheduleCard() {
   const G = goals(), C = cmt();
   const opt = (v, cur, l) => `<option value="${v}" ${String(v) === String(cur) ? "selected" : ""}>${l}</option>`;
   const nBlocks = G.schedule.reduce((t, s) => t + (s.blocks || []).length, 0);
-  return `<div class="card" style="margin-top:16px"><h3>3 · Classes, work & commute</h3>
-    <p class="small muted" style="margin-top:0">Add your fixed commitments. The app finds your free time and suggests the best times to train, eat, cook and stretch around them.</p>
+  return `<div class="editor"><p class="small muted" style="margin-top:0">Add each class or shift once and tick every day it happens. The app finds your free time and plans training, meals, cooking and stretching around it.</p>
     <div class="row blockadd">
       <input id="bk-label" placeholder="Name, e.g. Calculus" style="width:150px">
       <select id="bk-kind">${Object.entries(BLOCK_KINDS).map(([k, [ic, l]]) => opt(k, "class", `${ic} ${l}`)).join("")}</select>
@@ -1209,14 +1414,8 @@ function scheduleCard() {
       <label class="field">I work out <select id="cm-gym">${[["home", "at home"], ["near-home", "at a gym near home"], ["campus", "at a gym on campus / near work"]].map(([v, l]) => opt(v, C.gym, l)).join("")}</select></label>
     </div>
     ${["walk", "bike"].includes(C.mode) && C.min ? `<p class="small" style="margin:4px 0">✅ Your ${C.mode === "bike" ? "bike" : "walking"} commute counts as cardio (WHO 150 min/week) and its calories are added to those days.</p>` : ""}
-    ${weekGlance()}
     ${nBlocks ? `<div class="blocklist small">${G.schedule.map((s, i) => (s.blocks || []).length ? `<div><b>${DAYS[i]}</b> ${(s.blocks || []).slice().sort((a, b) => a.from.localeCompare(b.from)).map((b) => `<span class="chip">${BLOCK_KINDS[b.kind]?.[0] || ""} ${esc(b.label || BLOCK_KINDS[b.kind]?.[1] || "")} ${b.from}–${b.to} <a href="#" data-bkdel="${i}:${b.id}" title="Remove">✕</a></span>`).join("")}</div>` : "").join("")}</div>` : ""}
-    <div class="row" style="margin-top:12px">
-      <label class="field">Workouts per week <select id="sg-n">${[2, 3, 4, 5, 6].map((n) => opt(n, C.perWeek, n)).join("")}</select></label>
-      <button class="btn primary" id="sg-go">✨ Suggest my best times</button>
-      ${nBlocks ? `<button class="btn ghost sm" id="bk-clear">Clear all commitments</button>` : ""}
-    </div>
-    <div id="sg-out">${G.suggest ? renderSuggestion(G.suggest) : ""}</div>
+    ${nBlocks ? `<div class="row" style="margin-top:8px"><button class="btn ghost sm" id="bk-clear">Clear all commitments</button></div>` : `<label class="row small" style="margin-top:8px"><input type="checkbox" id="bk-none" ${G.noCommit ? "checked" : ""}> I don’t have fixed classes or work right now</label>`}
   </div>`;
 }
 function weekGlance() {
@@ -1240,29 +1439,6 @@ function weekGlance() {
     <span></span><div class="glegend small muted"><span class="g-class">class</span><span class="g-work">work</span><span class="g-study">study/online</span><span class="g-commute">commute</span><span class="g-train">workout</span><span class="g-cardio">cardio</span><span><i class="gdot meal"></i> meal</span><span><i class="gdot snack"></i> snack</span><span><i class="gdot stretch"></i> stretch</span><span class="gsleepl">asleep</span></div>
   </div>`;
 }
-function renderSuggestion(S) {
-  const G = goals(), C = cmt();
-  const why = S.days.filter((d) => d.tr).map((d) => `<li><b>${DAYS[d.i]} ${hhmm(d.tr.start)}</b>: ${esc(d.tr.why.filter(Boolean).join("; ") || "best free window")}</li>`).join("");
-  return `<h3 style="margin-top:16px">✨ Suggested week <span class="small muted">(${S.n} workouts of ≈ ${S.dur} min)</span></h3>
-    ${S.notes.length ? `<div class="box amber small">${S.notes.map(esc).join("<br>")}</div>` : ""}
-    <div style="overflow-x:auto"><table class="sched sugg"><tr><th></th><th>🏋️ Workout</th><th>🍳 Breakfast</th><th>🍱 Lunch</th><th>🍽️ Dinner</th><th>🥜 Snacks</th><th>🔥 Cook</th><th>🧘 Stretch</th><th>😴 Sleep</th></tr>
-    ${S.days.map((d) => { const I = d.info, M = I.meals; return `<tr><th>${DAYS[d.i]}</th>
-      <td>${d.tr ? `<b>${hhmm(d.tr.start)}–${hhmm(d.tr.start + S.dur)}</b>` : `<span class="muted">rest${I.cardioMin ? ` · 🚶 ${I.cardioMin} min` : ""}</span>`}</td>
-      <td>${hhmm(M.b)}${M.bGrab ? " <span class='muted'>grab-and-go</span>" : ""}</td>
-      <td>${hhmm(M.l)} <span class="muted">${M.lWhere === "packed" ? "packed" : "home"}${M.lShort ? ", short break" : ""}</span></td>
-      <td>${hhmm(M.d)}${M.dWhere === "out" ? " <span class='muted'>out</span>" : ""}</td>
-      <td>${[...(M.pre != null ? [`${hhmm(M.pre)} pre`] : []), ...M.snacks.map(hhmm)].join(", ") || "–"}</td>
-      <td>${d.batch ? `<b>batch</b> ${fmtMin(d.cook)}${I.cook.at != null ? ` from ${hhmm(I.cook.at)}` : ""}` : d.cook ? `quick ${fmtMin(d.cook)}` : "leftovers"}</td>
-      <td class="small">${I.stretch.map((s) => `${hhmm(s.t)} ${s.routine}`).join("<br>") || "–"}${d.tr ? "<br>+ cool-down" : ""}</td>
-      <td class="${I.sleepH < 7 ? "warn" : ""}">${hhmm(I.bed)} · ${I.sleepH} h</td></tr>`; }).join("")}</table></div>
-    <details class="small" style="margin-top:8px"><summary>Why these times?</summary><ul>${why}
-      <li>Late afternoon/evening is when strength tends to peak, but morning and evening training build muscle equally — consistency wins (Grgic 2019).</li>
-      <li>Workouts end at least 1 hour before bed: vigorous exercise right before sleep is the only kind shown to disturb it (Stutz 2019).</li>
-      <li>Sessions are spread out so muscles recover 48 h+ between sessions; the same start time each day builds the habit.</li>
-      <li>Meals every 3–4 hours with protein (ISSN), a meal or shake within ~2 h after training (Schoenfeld 2013), dinner 2+ h before bed when possible.</li>
-      <li>Desk stretches break up 90+ minutes of sitting (WHO 2020); you batch-cook on the 2 days with the most free time (spread out so food stays fresh) and cook quickly or eat leftovers on the rest, using about half a free evening so you keep downtime${C.gym === "campus" ? "; training right after your last class saves a trip" : ""}.</li></ul></details>
-    <div class="row" style="margin-top:10px"><button class="btn primary" id="sg-apply">✅ Use these times</button><span class="small muted">Sets training days & times, cooking time and packed lunches below. Then press “Build my week”.</span></div>`;
-}
 function bindScheduleCard() {
   const G = goals(), C = cmt(), re = () => { G.suggest = null; save(); renderGoals(); };
   $("#bk-add").onclick = () => {
@@ -1277,9 +1453,7 @@ function bindScheduleCard() {
   $("#cm-min").onchange = (e) => { C.min = +e.target.value; re(); };
   $("#cm-mode").onchange = (e) => { C.mode = e.target.value; re(); };
   $("#cm-gym").onchange = (e) => { C.gym = e.target.value; re(); };
-  $("#sg-n").onchange = (e) => { C.perWeek = +e.target.value; save(); };
-  $("#sg-go").onclick = () => { G.suggest = suggestWeek(C.perWeek); save(); renderGoals(); $("#sg-out").scrollIntoView({ behavior: "smooth", block: "start" }); };
-  if ($("#sg-apply")) $("#sg-apply").onclick = () => { applySuggestion(G.suggest); G.suggest = null; save(); renderGoals(); alert("Done — training days & times, cooking time and lunches are set. Press “Build my week” to plan meals around them."); };
+  if ($("#bk-none")) $("#bk-none").onchange = (e) => { G.noCommit = e.target.checked; save(); renderGoals(); };
 }
 
 function weighInSummary() {
@@ -1477,10 +1651,8 @@ const WVIEWS = [["program", "📅 My program"], ["library", "📚 Exercises"], [
 function renderWorkouts() {
   W();
   const v = new URLSearchParams(location.hash.split("?")[1] || "").get("v") || "program";
-  $("#view").innerHTML = `<h1>Workouts</h1>
-    <div class="row subnav">${WVIEWS.map(([k, l]) => `<a class="chip click ${v === k ? "on" : ""}" href="#workouts?v=${k}">${l}</a>`).join("")}
-      <span class="spacer"></span><button class="btn primary" id="w-start">▶ Start today’s workout</button></div>
-    <div id="wbody"></div>`;
+  $("#view").innerHTML = `<div class="row"><h1 style="margin:0">Training</h1><span class="spacer"></span><button class="btn primary" id="w-start">▶ Start today’s workout</button></div>
+    <div id="wbody" style="margin-top:14px"></div>`;
   ({ program: renderProgram, library: renderLibrary, stretch: renderStretching, progress: renderProgress, science: renderScience }[v] || renderProgram)();
   $("#w-start").onclick = () => {
     const today = (new Date().getDay() + 6) % 7, wo = workoutForDay(today), P = buildProgram();
@@ -1529,7 +1701,7 @@ function renderProgram() {
         <table class="sched">${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th><td><label class="row small"><input type="checkbox" data-tday="${i}" ${s.train ? "checked" : ""}> Train</label></td>
           <td><input type="time" data-ttime="${i}" value="${s.trainAt}" ${s.train ? "" : "disabled"}></td>
           <td class="small muted">${s.train ? (workoutForDay(i)?.name || "") : C.days[i] ? `🚶 ${C.days[i]} min ${C.opt.name.toLowerCase()}` : "rest"}</td></tr>`).join("")}</table>
-        <p class="small" style="margin:8px 0 0">📆 Have classes, a job or a commute? <a href="#goals">Add them in Goals</a> and get suggested workout, meal and stretch times.</p>
+        <p class="small" style="margin:8px 0 0">📆 Training days and times come from <a href="#week">My week</a> — “Plan my week” picks the best times around your classes and commute.</p>
         <label class="row small" style="margin-top:8px"><input type="checkbox" id="w-auto" ${w.autoKcal ? "checked" : ""}> Add workout & cardio calories to each day’s food target automatically</label>
         <div class="row" style="margin-top:10px"><button class="btn primary" id="w-apply">🔬 Apply science-based targets to Goals</button></div>
         <p class="small muted">Sets your calorie surplus (+${T.surplus} kcal ≈ ${T.ratePct}% body weight/week), protein (${T.protein} g/kg) and daily activity level, then you can rebuild your meal week.</p>
@@ -1779,7 +1951,7 @@ function finishStretch(early) {
     <div class="steptext">${esc(sm.name)} · ${fmtMin(minutes)}</div>
     <p class="muted" style="color:#c9b8ae">Daily stretching gives the best flexibility gains; 2–3 times a week is the minimum (ACSM).</p>
     <div class="row" style="justify-content:center"><button class="btn primary" id="sm-close">Done</button></div></div>`;
-  $("#sm-close").onclick = () => { el.classList.add("hidden"); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } if (location.hash.startsWith("#workouts")) route(); };
+  $("#sm-close").onclick = () => { el.classList.add("hidden"); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } route(); };
 }
 let strFilter = "";
 function renderStretching() {
@@ -1883,7 +2055,7 @@ function renderScience() {
 }
 
 // ───────────── BACKUP / RESTORE ─────────────
-const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout", "favorites"];
+const BACKUP_KEYS = ["plan", "journal", "freezer", "shopChecks", "extras", "settings", "pantry", "goals", "workout", "favorites", "daylog"];
 function exportBackup() {
   const data = { app: "world-kitchen", version: 1, exported: new Date().toISOString(), prepStart: store.get("prepStart", "10:00") };
   for (const k of BACKUP_KEYS) data[k] = state[k];
@@ -2035,7 +2207,7 @@ function renderPlan() {
   const total = cooks.reduce((a, p) => a + BY_ID[p.recipeId].totalMin, 0);
   const ws = weekStart();
   $("#view").innerHTML = `
-    <div class="row"><h1>Meal Plan</h1><span class="spacer"></span>
+    <div class="row"><h1>Meal calendar</h1><span class="spacer"></span>
       <label class="small muted">Portions per meal <input type="number" min="1" id="hh" value="${state.settings.household}" style="width:64px"></label></div>
     <p class="sub">Cook once, eat several times. Batch recipes automatically fill upcoming meals with leftovers (green) based on how long they keep.</p>
     <div class="row">

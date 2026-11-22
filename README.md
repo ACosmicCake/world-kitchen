@@ -2,7 +2,18 @@
 
 **Live app: https://acosmiccake.github.io/world-kitchen/**
 
-A cookbook, meal planner and cooking coach for people who cook alone, with 73 traditional recipes from 26 countries and a guide to 128 ingredients. It works offline and can be installed as an app.
+A planner built around your schedule. You add your classes, work and commute once, and it plans when to train, eat, cook, shop and stretch. Underneath are 73 traditional recipes from 26 countries, a guide to 128 ingredients, a personalised training program and a stretching library. It works offline and can be installed as an app.
+
+## How it's organised
+Everything starts from your schedule:
+- **🏠 Today** (home): your day as a timeline, with classes, commute, meals, cooking, workout, stretches and bedtime. A big **Up next** card has a one-tap action: start the workout, open cook mode, start a stretch routine, or see the batch-cook steps. Tick things off as you go. Calories and protein add up from what you've eaten, and there's a water counter and a "this week" strip. On first use, a 3-step checklist walks you through setup.
+- **🗓️ My week:** add classes, work and commute, see the week at a glance, then press **✨ Plan my week**. One tap picks your training times and batch-cook days around your schedule, plans meals sized to your calorie target, and fills the grocery list. **Meal calendar** and **Batch-cook timeline** are in the same place.
+- **🍲 Food:** recipes, ingredient guide, cooking skills, journal.
+- **🏋️ Training:** program, exercises, stretching, progress, science.
+- **🛒 Shop:** grocery list (with prices and budget) and pantry.
+- **👤 Me:** body stats and targets, food preferences, weigh-ins, backup and restore.
+
+On phones the six sections become a bottom tab bar. Old links (`#discover`, `#plan`, `#goals`, `#workouts`…) still work.
 
 ## Run it
 - **Best:** double-click **`start.cmd`**. It opens http://localhost:5173 in your browser (it needs [Node.js](https://nodejs.org)). Keep the black window open while you use the app, and close it to stop.
@@ -14,7 +25,7 @@ A cookbook, meal planner and cooking coach for people who cook alone, with 73 tr
 Phones only allow offline/installable web apps from **https** addresses. To put it on your phone:
 1. It is already hosted at https://acosmiccake.github.io/world-kitchen/ (GitHub Pages, from the `main` branch). Every `git push` updates it within a minute or two.
 2. Open the https link on your phone. On iPhone, tap Share → **Add to Home Screen**. On Android, tap ⋮ → **Install app**.
-3. Move your data across: on the computer go to **Journal → Download backup**, then on the phone go to **Journal → Restore from backup**.
+3. Move your data across: on the computer go to **Me → Download backup**, then on the phone go to **Me → Restore from backup**.
 
 ## Pantry
 In the **Pantry** tab you tap what you have at home, or use a starter kit (Basics, East & SE Asian, Indian spice box…) to fill it in faster. The pantry then shows up in three places:
