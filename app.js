@@ -691,6 +691,7 @@ function defaultGoals() {
       ? { cook: 20, train: [0, 2, 4].includes(i), trainAt: "18:00", wake: "07:00", b: "home", l: "packed", d: "home" }
       : { cook: 120, train: i === 5, trainAt: "10:30", wake: "09:00", b: "home", l: "home", d: "home" }),
     prefs: { maxDiff: 2, veg: false, extraTrainKcal: 150, week: "this", replace: true },
+    commute: { min: 0, mode: "transit", gym: "home", perWeek: 3 },
     result: null, weighIns: [],
   };
 }
@@ -710,6 +711,160 @@ const sideKcal = (r) => (r.side ? SIDES[r.side].kcal : 0);
 const portionFor = (r, target) => Math.min(2.5, Math.max(0.75, Math.round(((target - sideKcal(r)) / r.nut.kcal) * 4) / 4));
 const mealKcal = (r, m) => Math.round(r.nut.kcal * m + sideKcal(r));
 const mealP = (r, m) => Math.round(r.nut.p * m + (r.side ? SIDES[r.side].p : 0));
+
+// ───── Daily schedule: classes, work & commute → free time → best times to train, eat, cook and stretch ─────
+const BLOCK_KINDS = { class: ["📚", "Class", "away"], work: ["💼", "Work", "away"], other: ["📌", "Other (away from home)", "away"], online: ["💻", "Online class / remote work", "home"], study: ["📖", "Study / homework", "home"], commute: ["🚌", "Commute", "commute"] };
+const SIT_KINDS = ["class", "work", "online", "study"];
+const bedOf = (s) => s.bed || hhmm(toMin(s.wake) + 16 * 60);
+function cmt() { const G = goals(); G.commute = Object.assign({ min: 0, mode: "transit", gym: "home", perWeek: 3 }, G.commute || {}); return G.commute; }
+const activeCommuteMin = (i) => { const C = cmt(); return ["walk", "bike"].includes(C.mode) && +C.min && (goals().schedule[i].blocks || []).some((b) => BLOCK_KINDS[b.kind]?.[2] === "away") ? 2 * C.min : 0; };
+const avgSessionMin = () => { const P = buildProgram(); return P ? Math.round(P.sessions.reduce((t, s) => t + s.minutes, 0) / P.sessions.length) : W().sessionMin; };
+
+// Everything about one weekday: busy blocks (incl. auto commute), training, free windows, meal/snack/cook/stretch/cardio times.
+// o.train: undefined = use the saved schedule, null = no training, {start, min} = try this training slot.
+function dayInfo(i, o = {}) {
+  const G = goals(), s = G.schedule[i], C = cmt();
+  const wake = toMin(s.wake); let bed = toMin(bedOf(s)); if (bed <= wake + 60) bed += 1440;
+  const blocks = (s.blocks || []).map((b) => ({ kind: b.kind, label: b.label || BLOCK_KINDS[b.kind]?.[1] || "Busy", start: toMin(b.from), end: toMin(b.to), id: b.id }))
+    .filter((b) => b.end > b.start).sort((a, b) => a.start - b.start);
+  const away = blocks.filter((b) => BLOCK_KINDS[b.kind]?.[2] === "away");
+  const tr0 = o.train !== undefined ? o.train : s.train ? { start: toMin(s.trainAt), min: workoutForDay(i)?.minutes || W().sessionMin } : null;
+  const trainB = tr0 ? { kind: "train", start: tr0.start, end: tr0.start + tr0.min } : null;
+  const busy = blocks.slice();
+  let leave = null, back = null, lastAway = null;
+  if (away.length) {
+    const first = away[0]; lastAway = away.reduce((m, b) => (b.end > m.end ? b : m));
+    let homeStart = lastAway.end;
+    // gym on campus right after the last class: go home after training instead
+    if (trainB && C.gym === "campus" && trainB.start >= lastAway.end - 5 && trainB.start <= lastAway.end + 30) homeStart = trainB.end + 15;
+    leave = first.start - +C.min; back = homeStart + +C.min;
+    if (+C.min && !blocks.some((b) => b.kind === "commute")) {
+      busy.push({ kind: "commute", label: `Commute (${C.mode})`, start: leave, end: first.start, auto: true });
+      busy.push({ kind: "commute", label: `Commute home (${C.mode})`, start: homeStart, end: back, auto: true });
+    }
+  }
+  const occ = [...busy, ...(trainB ? [trainB] : [])].sort((a, b) => a.start - b.start);
+  const free = []; let t = wake;
+  for (const b of occ) { if (b.start > t) free.push({ start: t, end: b.start }); t = Math.max(t, b.end); }
+  if (bed > t) free.push({ start: t, end: bed });
+  for (const f of free) f.home = leave == null || f.end <= leave || f.start >= back;
+  const fits = (t, dur, home) => free.some((f) => f.start <= t && t + dur <= f.end && (!home || f.home));
+  const near = (target, dur, lo, hi, home) => { for (let d = 0; d <= 600; d += 5) for (const x of [target - d, target + d]) if (x >= lo && x + dur <= hi && fits(x, dur, home)) return x; return null; };
+  const at = (t) => { const f = free.find((f) => f.start <= t && t < f.end); return f ? (f.home ? "home" : "packed") : "packed"; };
+  const notes = [];
+  // breakfast
+  let bGrab = leave != null && leave - wake < 40;
+  let bT = bGrab ? wake + 10 : near(wake + 30, 15, wake + 10, leave ?? wake + 180, false);
+  if (bT == null) { bT = wake + 10; bGrab = true; }
+  // lunch: around 12:30, or soon after a late-morning workout
+  const lTarget = trainB && trainB.end >= 11 * 60 && trainB.end <= 13.5 * 60 ? trainB.end + 30 : 12.5 * 60;
+  let lT = near(lTarget, 20, 11 * 60, 15 * 60, false), lShort = false;
+  if (lT == null) { lT = near(lTarget, 5, 10.5 * 60, 16 * 60, false); lShort = true; }
+  if (lT == null) { lT = lTarget; lShort = true; notes.push("No break for lunch: eat a packed lunch the moment you get a gap, and keep a snack bar in your bag."); }
+  const lWhere = at(lT);
+  // dinner: at home, ~30+ min after training / getting home, ideally 2+ h before bed
+  const dLo = Math.max(17 * 60, trainB && trainB.end > 15 * 60 ? trainB.end + 30 : 0, back && back > 15 * 60 ? back : 0);
+  const dTarget = trainB ? Math.min(Math.max(dLo, 18.5 * 60), Math.max(dLo, trainB.end + 120)) : Math.max(dLo, 18.5 * 60);
+  let dT = near(dTarget, 30, dLo, bed - 60, true), dWhere = "home";
+  if (dT == null) { dT = near(dLo, 20, 16 * 60, bed - 30, false) ?? Math.min(bed - 60, Math.max(dLo, 19 * 60)); dWhere = at(dT) === "home" ? "home" : "out"; }
+  // snacks: no more than ~4 h without food (protein every 3–4 h, ISSN); pre-workout fuel if no meal in the 3 h before
+  const eats = [bT, lT, dT, ...(trainB ? [trainB.end + 15] : [])].sort((a, b) => a - b);
+  const snacks = [];
+  let pre = null;
+  if (trainB && !eats.some((e) => e >= trainB.start - 180 && e <= trainB.start - 30)) pre = near(trainB.start - 75, 5, Math.max(wake, trainB.start - 150), trainB.start - 20, false);
+  const all = [...eats, ...(pre != null ? [pre] : [])].sort((a, b) => a - b);
+  for (let k = 0; k + 1 < all.length; k++) if (all[k + 1] - all[k] > 240) { const x = near(Math.round((all[k] + all[k + 1]) / 2 / 5) * 5, 5, all[k] + 90, all[k + 1] - 60, false); if (x != null) snacks.push(x); }
+  // cooking time: largest free stretch at home in the afternoon/evening (not all of it — you need downtime too)
+  const hasAway = away.length > 0;
+  const homeWins = free.filter((f) => f.home && f.end > 15 * 60 && f.end - f.start >= 20).map((f) => ({ start: Math.max(f.start, hasAway ? 15 * 60 : wake + 60), end: Math.min(f.end, bed - 60) })).filter((f) => f.end - f.start >= 20);
+  const bigW = homeWins.sort((a, b) => (b.end - b.start) - (a.end - a.start))[0];
+  const room = bigW ? (bigW.end - bigW.start) * (hasAway ? 0.5 : 0.6) : 0;
+  const cookMin = [180, 120, 90, 60, 45, 30, 20, 15, 0].find((m) => m <= Math.min(room, hasAway ? 90 : 180)) || 0;
+  const cookAt = bigW ? (bigW.start <= dT && dT <= bigW.end ? Math.max(bigW.start, dT - cookMin - 10) : bigW.start) : null;   // finish cooking around dinner
+  // stretching: morning mobility, desk breaks during long sitting, wind-down before bed
+  const stretch = [];
+  if (fits(wake + 5, 8, true) && (leave == null || leave - wake >= 45)) stretch.push({ t: wake + 5, routine: "morning", label: "Morning mobility (≈ 7 min)" });
+  const sits = blocks.filter((b) => SIT_KINDS.includes(b.kind));
+  for (let k = 0, run = 0; k < sits.length; k++) {
+    run += sits[k].end - sits[k].start;
+    const nxt = sits[k + 1], gap = nxt ? nxt.start - sits[k].end : 999;
+    if (gap < 20 && nxt && run >= 90) { stretch.push({ t: sits[k].end, routine: "desk", label: `Desk stretch between ${sits[k].label} and ${nxt.label} (≈ 5 min)` }); run = 0; }
+    else if (gap >= 20) { if (run >= 100) stretch.push({ t: sits[k].end, routine: "desk", label: `Stand up & stretch after ${run} min of sitting (≈ 5 min)` }); run = 0; }
+  }
+  if (!trainB) { const x = near(dT + 75, 12, dT + 45, bed - 30, true); if (x != null) stretch.push({ t: x, routine: "full", label: "Full-body flexibility (≈ 12 min)" }); }
+  if (fits(bed - 25, 10, true)) stretch.push({ t: bed - 25, routine: "bedtime", label: "Bedtime wind-down stretch (≈ 7 min)" });
+  // cardio walk/ride
+  const cMin = cardioPlan().days[i] || 0;
+  const cardioAt = cMin ? (trainB && fits(trainB.end, cMin, false) ? trainB.end : near(trainB ? trainB.end + 15 : 17.5 * 60, cMin, wake + 30, bed - 90, false)) : null;
+  const nextWake = toMin(G.schedule[(i + 1) % 7].wake) + 1440, sleepH = Math.round((nextWake - bed) / 30) / 2;
+  if (sleepH < 7) notes.push(`Only ${sleepH} h of sleep before ${DAYS[(i + 1) % 7]} — adults need 7+ h (AASM).`);
+  return { i, wake, bed, busy, train: trainB, free, leave, back, lastAway, meals: { b: bT, bGrab, l: lT, lWhere, lShort, d: dT, dWhere, snacks, pre }, cook: { min: cookMin, at: cookAt }, stretch, cardioAt, cardioMin: cMin, sleepH, notes };
+}
+
+// Pick training days & times from your free time (late afternoon/evening preferred, never in the last hour before bed,
+// sessions spread out, same time each day where possible), then plan meals/cooking/stretching around them.
+function suggestWeek(n) {
+  const G = goals(), C = cmt(), dur = avgSessionMin(), travel = C.gym === "near-home" ? 15 : 0;
+  const slotsFor = (i) => {
+    const base = dayInfo(i, { train: null }), out = [];
+    const score = (t, end, why0) => {
+      if (end > base.bed - 60) return null;               // vigorous exercise in the last hour before bed can hurt sleep (Stutz 2019)
+      let sc = 0, why = why0 ? [why0] : [];
+      if (t >= 15 * 60 && end <= 20.5 * 60) { sc += 3; why.push("late afternoon/evening, when strength is highest"); }
+      else if (t < 10 * 60) { sc += 1.5; why.push("morning — easy to keep consistent"); }
+      else sc += 1;
+      if (end > base.bed - 120) { sc -= 2; why.push("a bit close to bedtime"); }
+      if (t < base.wake + 45) sc -= 1.5;
+      sc -= Math.abs(t - 17.5 * 60) / 600;
+      return { start: t, sc, why };
+    };
+    for (const f of base.free) {
+      if (C.gym !== "campus" && !f.home) continue;
+      for (let t = Math.ceil((f.start + travel) / 15) * 15; t + dur + travel <= f.end; t += 15) {
+        const r = score(t, t + dur, !f.home ? "in a gap between classes" : C.gym === "home" ? "at home, no travel" : "");
+        if (r) { if (!f.home) r.sc += 1; if (f.home && C.gym === "campus" && base.lastAway) r.sc -= 1.5; out.push(r); }   // an extra trip back to campus
+      }
+    }
+    if (C.gym === "campus" && base.lastAway) { const t = base.lastAway.end + 10, r = score(t, t + dur, "right after your last commitment — no extra trip"); if (r && t + dur + +C.min < base.bed - 60) { r.sc += 1.5; out.push(r); } }
+    return out.sort((a, b) => b.sc - a.sc);
+  };
+  const opts = G.schedule.map((_, i) => slotsFor(i));
+  const feasible = opts.map((o, i) => (o.length ? i : -1)).filter((i) => i >= 0);
+  const k = Math.min(n, feasible.length), notes = [];
+  if (k < n) notes.push(`Only ${feasible.length} day(s) have a free ${dur}-minute window for training. Shorten sessions (My program → Session length) or free up time.`);
+  // choose the day set with the best slots, spread out (rest between sessions for the same muscles)
+  let best = null;
+  const combos = (arr, r, st = 0, acc = []) => { if (acc.length === r) { const sc = acc.reduce((t, i) => t + opts[i][0].sc, 0) - acc.reduce((t, i, j) => t + (acc.includes((i + 1) % 7) ? (r <= 3 ? 2.5 : r === 4 ? 1 : 0) : 0), 0); if (!best || sc > best.sc) best = { days: acc.slice(), sc }; return; } for (let j = st; j < arr.length; j++) { acc.push(arr[j]); combos(arr, r, j + 1, acc); acc.pop(); } };
+  combos(feasible, k);
+  const chosen = best ? best.days : [];
+  // same time each day if it costs little
+  const times = [...new Set(chosen.map((i) => opts[i][0].start))];
+  let common = null, commonN = 1;
+  for (const t of times) { const c = chosen.filter((i) => opts[i].some((o) => o.start === t && o.sc >= opts[i][0].sc - 1.5)).length; if (c > commonN) { common = t; commonN = c; } }
+  const days = G.schedule.map((s, i) => {
+    let tr = null;
+    if (chosen.includes(i)) { const o = (common != null && opts[i].find((x) => x.start === common && x.sc >= opts[i][0].sc - 1.5)) || opts[i][0]; tr = { start: o.start, min: dur, why: o.why.concat(o.start === common && commonN > 1 ? ["same time as your other sessions"] : []) }; }
+    return { i, tr, info: dayInfo(i, { train: tr ? { start: tr.start, min: dur } : null }) };
+  });
+  // cooking: batch-cook on the 2 days with the most free time (spread out so food stays fresh), quick cooks on the rest
+  const batch = [];
+  for (const d of days.slice().sort((a, b) => b.info.cook.min - a.info.cook.min || (b.i >= 5) - (a.i >= 5))) {
+    if (batch.length >= 2 || d.info.cook.min < 60) break;
+    if (batch.every((x) => Math.min((x.i - d.i + 7) % 7, (d.i - x.i + 7) % 7) >= 2)) batch.push(d);
+  }
+  for (const d of days) { d.batch = batch.includes(d); d.cook = d.batch ? d.info.cook.min : Math.min(d.info.cook.min, 30); }
+  if (!batch.length) notes.push("No day has 1 hour+ free at home to batch-cook. Free up one evening or weekend afternoon — it makes the whole week easier.");
+  return { n, dur, days, notes, made: ymd(new Date()) };
+}
+function applySuggestion(S) {
+  const G = goals();
+  for (const d of S.days) {
+    const s = G.schedule[d.i], m = d.info.meals;
+    s.train = !!d.tr; if (d.tr) s.trainAt = hhmm(d.tr.start);
+    s.cook = d.cook ?? d.info.cook.min; s.b = "home"; s.l = m.lWhere === "home" ? "home" : "packed"; s.d = m.dWhere === "out" ? "out" : "home";
+  }
+  G.useSchedule = true;
+}
 
 // The builder: batch-cook on days with time, eat leftovers on busy days, quick cooks where there's a little time,
 // size portions to the calorie target, then close each day's gap with snacks timed around training.
@@ -737,6 +892,9 @@ function buildWeek(costW = 0) {
   const assign = new Map(), key = (s) => s.d.date + s.meal;
   const entries = [], sessions = [], notes = [];
   const mealTarget = (d) => Math.round(d.target * 0.32); // lunch & dinner ≈ 32% each; breakfast + snacks fill the rest
+  const DI = {}, di = (k) => DI[k] || (DI[k] = dayInfo(k));
+  // with classes/work entered, a batch day cooks in its free evening — so that day's lunch must come from the previous batch
+  const lateStart = (bd) => { const k = (bd.i + 7) % 7; return (G.schedule[k].blocks || []).length > 0 && di(k).cook.at != null && di(k).cook.at > di(k).meals.l; };
 
   // 1) batch-cook days (≥ 60 min free) cover the following days until the next batch day
   let batchDays = days.filter((d) => d.active && d.s.cook >= 60);
@@ -765,7 +923,8 @@ function buildWeek(costW = 0) {
   }
   batchDays.forEach((b, bi) => {
     const end = bi + 1 < batchDays.length ? batchDays[bi + 1].i : 7;
-    const win = slots.filter((s) => s.d.i >= b.i && s.d.i < end && !assign.has(key(s)));
+    const win = slots.filter((s) => !assign.has(key(s)) && ((s.d.i >= b.i && s.d.i < end && !(s.d.i === b.i && s.meal === "lunch" && lateStart(b)))
+      || (bi + 1 < batchDays.length && s.d.i === end && s.meal === "lunch" && lateStart(batchDays[bi + 1]))));
     const groups = [win.filter((s) => s.meal === "lunch"), win.filter((s) => s.meal === "dinner")].filter((g) => g.length);
     const cooked = [];
     for (const g of groups) {
@@ -791,7 +950,8 @@ function buildWeek(costW = 0) {
     }
     if (cooked.length) {
       const sched = schedule(cooked);
-      sessions.push({ date: b.date, start: Math.max(toMin(b.s.wake) + 150, 10 * 60), minutes: Math.max(...sched.map((x) => x.end)),
+      const bi7 = (b.i + 7) % 7, cAt = di(bi7).cook.at;
+      sessions.push({ date: b.date, start: cAt != null && (G.schedule[bi7].blocks || []).length ? cAt : Math.max(toMin(b.s.wake) + 150, 10 * 60), minutes: Math.max(...sched.map((x) => x.end)),
         handsOn: cooked.reduce((a, r) => a + r.activeMin, 0), recipes: cooked.map((r) => r.id),
         frozen: entries.filter((e) => e.date === b.date && e.meal === "prep" && e.frozen).map((e) => `${e.frozen} portion(s) of ${BY_ID[e.recipeId].name}`) });
     }
@@ -800,7 +960,11 @@ function buildWeek(costW = 0) {
   for (const d of days.filter((d) => d.active && d.s.cook >= 15)) {
     const target = slots.find((s) => s.d === d && s.meal === "dinner" && !assign.has(key(s))) || slots.find((s) => s.d === d && s.meal === "lunch" && !assign.has(key(s)));
     if (!target) continue;
-    const r = choose((r) => r.totalMin <= Math.max(d.s.cook, 20) && r.activeMin <= Math.max(d.s.cook, 15));
+    // lunch on a day you leave home before lunchtime: it has to be cooked before you leave
+    const Dd = di(d.i), awayLunch = target.meal === "lunch" && Dd.leave != null && Dd.leave < Dd.meals.l;
+    const lim = awayLunch ? Math.min(Math.max(d.s.cook, 20), Dd.leave - Dd.wake - 20) : Math.max(d.s.cook, 20);
+    if (lim < 10) continue;
+    const r = choose((r) => r.totalMin <= lim && r.activeMin <= Math.max(d.s.cook, 15));
     if (!r) continue;
     const next = slots.find((s) => s.d.i === d.i + 1 && s.meal === "lunch" && !assign.has(key(s)));
     const m = portionFor(r, mealTarget(d));
@@ -824,15 +988,22 @@ function buildWeek(costW = 0) {
   const out = days.map((d) => {
     if (!d.active) return { date: d.date, past: true };
     const s = d.s, wake = toMin(s.wake), train = s.train ? toMin(s.trainAt) : null;
+    const D = di(d.i), M = D.meals;
     const items = [];
     const add = (time, kind, label, kcal = 0, p = 0, extra = {}) => items.push({ time, kind, label, kcal, p, ...extra });
+    // your fixed commitments (classes, work, commute) on the timeline
+    for (const b of D.busy) add(b.start, "busy", `${BLOCK_KINDS[b.kind]?.[0] || "📌"} ${b.label} until ${hhmm(b.end)}`);
+    for (const st of D.stretch) add(st.t, "stretch", st.label, 0, 0, { routine: st.routine });
     if (s.b !== "skip") {
-      const bf = s.cook <= 20 ? ADDON.oats : d.i % 2 ? ADDON["eggs-toast"] : ADDON["yogurt-bowl"];
-      add(wake + 30, "breakfast", bf.name, bf.kcal, bf.p, { addon: bf.id });
+      const bf = M.bGrab || s.cook <= 20 ? ADDON.oats : d.i % 2 ? ADDON["eggs-toast"] : ADDON["yogurt-bowl"];
+      add(M.b, "breakfast", bf.name + (M.bGrab ? " (grab-and-go)" : ""), bf.kcal, bf.p, { addon: bf.id });
     }
-    let lunchT = 12 * 60 + 30, dinnerT = 19 * 60;
-    if (train && train >= 16 * 60 && train <= 20 * 60) dinnerT = train + 90;   // eat within ~1 h after finishing
-    if (train && train >= 11 * 60 && train < 14 * 60) lunchT = train + 90;
+    const sessD = sessions.find((x) => x.date === d.date);
+    // free slots around classes/commute; dinner ~30+ min after training (protein within a few hours); lunch from today's batch waits for it
+    const lunchA = assign.get(d.date + "lunch");
+    const lunchT = sessD && lunchA && sessD.recipes.includes(lunchA.r.id) && sessD.start + sessD.minutes > M.l ? Math.min(15 * 60, Math.max(M.l, sessD.start + sessD.minutes)) : M.l;
+    // batch-cook evening: eat when the cooking is done
+    const dinnerT = sessD && sessD.start <= M.d + 30 && sessD.start + sessD.minutes > M.d ? Math.min(D.bed - 45, Math.max(M.d, sessD.start + sessD.minutes)) : M.d;
     for (const meal of ["lunch", "dinner"]) {
       const a = assign.get(d.date + meal), t = meal === "lunch" ? lunchT : dinnerT;
       const where = meal === "lunch" ? s.l : s.d;
@@ -841,15 +1012,16 @@ function buildWeek(costW = 0) {
     }
     if (train) {
       const wo = workoutForDay(d.i);
-      add(train, "train", wo ? `Training: ${wo.name} (about ${wo.minutes} min)` : "Training");
-      if (train - 90 > wake + 90) add(train - 90, "snack", `${ADDON.banana.name} (pre-workout)`, ADDON.banana.kcal, ADDON.banana.p);
+      add(train, "train", wo ? `Training: ${wo.name} (about ${wo.minutes} min, start with the dynamic warm-up)` : "Training");
+      if (M.pre != null) add(M.pre, "snack", `${ADDON.banana.name} (pre-workout)`, ADDON.banana.kcal, ADDON.banana.p);
+      if (D.train) add(D.train.end, "stretch", "Cool-down stretch for the muscles you trained (≈ 5 min)", 0, 0, { routine: "cooldown" });
     }
-    const cmin = cardioPlan().days[d.i];
-    if (cmin) add(train ? train + 60 : 17 * 60 + 30, "train", `${cardioPlan().opt.name}: ${cmin} min (WHO 150 min/week)`);
+    if (D.cardioMin && D.cardioAt != null) add(D.cardioAt, "train", `${cardioPlan().opt.name}: ${D.cardioMin} min (WHO 150 min/week)`);
+    if (activeCommuteMin(d.i)) add((D.leave ?? wake) + 1, "train", `Your ${cmt().mode === "bike" ? "bike" : "walking"} commute: ${activeCommuteMin(d.i)} min of cardio today`);
     const sess = sessions.find((x) => x.date === d.date);
     if (sess) add(sess.start, "cook", `Batch cook: ${sess.recipes.map((id) => BY_ID[id].name).join(" + ")} (about ${fmtMin(sess.minutes)}, ${fmtMin(sess.handsOn)} hands-on)${sess.frozen.length ? `. Freeze ${sess.frozen.join(", ")}` : ""}`, 0, 0, { session: true });
     const quick = entries.find((e) => e.date === d.date && e.type === "cook" && e.meal !== "prep");
-    if (quick) { const r = BY_ID[quick.recipeId]; add((quick.meal === "dinner" ? dinnerT : lunchT) - r.totalMin - 5, "cook", `Cook ${r.name} (${fmtMin(r.totalMin)})${quick.servings > quick.eat ? ", and pack tomorrow’s lunch" : ""}`, 0, 0, { recipe: r.id }); }
+    if (quick) { const r = BY_ID[quick.recipeId], early = quick.meal === "lunch" && D.leave != null && D.leave < lunchT; add((early ? D.leave : quick.meal === "dinner" ? dinnerT : lunchT) - r.totalMin - 5, "cook", `Cook ${r.name} (${fmtMin(r.totalMin)})${early ? " — pack it for lunch" : ""}${quick.servings > quick.eat ? ", and pack tomorrow’s lunch" : ""}`, 0, 0, { recipe: r.id }); }
     let total = items.reduce((a, x) => a + x.kcal, 0);
     let n = 0;
     const take = (id, time, suffix = "") => { const a = snackInfo(id); add(time, "snack", a.name + suffix, a.kcal, a.p, { addon: id, shake: !!SHAKE_BY_ID[id] }); total += a.kcal; n++; };
@@ -861,17 +1033,17 @@ function buildWeek(costW = 0) {
     let snackIds = ["shake-greek", "trail-mix", "pb-toast", "milk", "shake-sinh-to-bo", "yogurt-bowl", "olive-oil"];
     snackIds = snackIds.slice(d.i % snackIds.length).concat(snackIds.slice(0, d.i % snackIds.length)); // rotate for variety
     if (costW > 0) snackIds.sort((x, y) => addonCost(x) / snackInfo(x).kcal - addonCost(y) / snackInfo(y).kcal);
-    const snackTimes = [lunchT + 180, wake + 210];
+    const snackTimes = [...M.snacks, lunchT + 180, wake + 210].filter((t, k, a) => a.indexOf(t) === k && !D.busy.some((b) => t > b.start && t < b.end));
     for (const id of snackIds) {
       const gap = d.target - total;
       if (gap < 150 || n >= 3) break;
       if (snackInfo(id).kcal > gap + 150) continue;
       take(id, snackTimes.shift() ?? dinnerT + 120);
     }
-    const sleepT = wake + 16 * 60;
+    const sleepT = D.bed;
     if (d.target - total >= 200 && n < 4) take("shake-bedtime", sleepT - 45, " (before bed)");
     items.sort((x, y) => x.time - y.time);
-    return { date: d.date, items, kcal: total, p: items.reduce((a, x) => a + x.p, 0), target: d.target, ptarget: T.protein, train: !!s.train, sleep: hhmm(sleepT - 30 + 24 * 60), wake: s.wake };
+    return { date: d.date, items, kcal: total, p: items.reduce((a, x) => a + x.p, 0), target: d.target, ptarget: T.protein, train: !!s.train, sleep: hhmm(sleepT), wake: s.wake, sleepH: D.sleepH, dnotes: D.notes };
   });
   // night-before reminders: overnight oats, soaking beans
   out.forEach((d, i) => {
@@ -882,6 +1054,7 @@ function buildWeek(costW = 0) {
     for (const id of sess?.recipes || []) for (const st of BY_ID[id].advance) prev.items.push({ time: 21 * 60, kind: "prep", label: `For tomorrow’s ${BY_ID[id].name}: ${st.t}`, kcal: 0, p: 0 });
     prev.items.sort((x, y) => x.time - y.time);
   });
+  for (const n of new Set(out.flatMap((d) => (d.past ? [] : d.dnotes || [])))) notes.push(n);
   const lowP = out.filter((d) => !d.past && d.p < d.ptarget - 20);
   if (lowP.length) notes.push(`Protein is short on ${lowP.map((d) => DAYS[dates.indexOf(d.date)]).join(", ")}. Swap a snack for the whey or Greek-yogurt shake, or add 2 eggs.`);
 
@@ -953,12 +1126,14 @@ function renderGoals() {
         <button class="btn primary" id="g-build" style="margin-top:14px">✨ Build my week</button>
       </div>
     </div>
-    <div class="card" style="margin-top:16px;overflow-x:auto"><h3>3 · Your week</h3>
-      <p class="small muted" style="margin-top:0">How much time you have to cook each day decides when you batch-cook (60+ min), cook something quick (15–45 min), or just eat leftovers.</p>
-      <table class="sched"><tr><th></th><th>Time to cook</th><th>Wake</th><th>Training</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>
+    ${scheduleCard()}
+    <div class="card" style="margin-top:16px;overflow-x:auto"><h3>4 · Your week</h3>
+      <p class="small muted" style="margin-top:0">How much time you have to cook each day decides when you batch-cook (60+ min), cook something quick (15–45 min), or just eat leftovers. “Suggest my best times” above fills this in for you.</p>
+      <table class="sched"><tr><th></th><th>Time to cook</th><th>Wake</th><th>Bed</th><th>Training</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr>
       ${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th>
         <td>${sel(`schedule.${i}.cook`, s.cook, [[0, "None"], [15, "15 min"], [20, "20 min"], [30, "30 min"], [45, "45 min"], [60, "1 h"], [90, "1.5 h"], [120, "2 h"], [180, "3 h+"]])}</td>
         <td><input type="time" data-g="schedule.${i}.wake" value="${s.wake}"></td>
+        <td><input type="time" data-g="schedule.${i}.bed" value="${bedOf(s)}"></td>
         <td><label class="row small" style="gap:4px"><input type="checkbox" data-g="schedule.${i}.train" ${s.train ? "checked" : ""}> <input type="time" data-g="schedule.${i}.trainAt" value="${s.trainAt}" ${s.train ? "" : "disabled"}></label></td>
         <td>${sel(`schedule.${i}.b`, s.b, [["home", "At home"], ["skip", "Skip"]])}</td>
         <td>${sel(`schedule.${i}.l`, s.l, [["home", "At home"], ["packed", "Packed"], ["out", "Eat out"]])}</td>
@@ -979,6 +1154,7 @@ function renderGoals() {
     save(); renderGoals();
   });
   $("#g-budget").onchange = (e) => { state.settings.weeklyBudget = Math.max(0, +e.target.value || 0); save(); renderGoals(); };
+  bindScheduleCard();
   $("#g-build").onclick = () => { runBuilder(); renderGoals(); $("#g-result").scrollIntoView({ behavior: "smooth" }); };
   $("#w-add").onclick = () => {
     const kg = +$("#w-kg").value; if (!kg) return;
@@ -991,7 +1167,7 @@ function renderGoals() {
 }
 
 function renderGoalResult(R) {
-  const icon = { shake: "🥤", breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️" };
+  const icon = { shake: "🥤", breakfast: "🍳", lunch: "🍱", dinner: "🍽️", snack: "🥜", cook: "🔥", prep: "🌙", train: "🏋️", busy: "", stretch: "🧘" };
   const live = R.days.filter((d) => !d.past);
   const avg = live.length ? Math.round(live.reduce((a, d) => a + d.kcal, 0) / live.length) : 0;
   return `
@@ -1008,9 +1184,102 @@ function renderGoalResult(R) {
       <div class="bar"><div style="width:${Math.min(100, (d.kcal / d.target) * 100)}%;background:${Math.abs(d.kcal - d.target) <= 150 ? "var(--green)" : "var(--amber)"}"></div></div>
       <div class="small muted">💪 Protein ${d.p} / ${d.ptarget} g</div>
       <div class="health small">💧 2.5–3 L water · 🥦 5+ fruit & veg portions · 😴 lights out ${d.sleep || "by 23:00"}${d.train ? "" : " · 🚶 30-min walk (rest day)"}</div>
-      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}${x.shake ? " k-shake" : ""}"><span class="time">${hhmm(x.time)}</span> ${x.shake ? "🥤" : x.kind === "train" ? `<a href="#workouts" title="Open workout">🏋️</a>` : icon[x.kind] || "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
+      <ul class="tl">${d.items.map((x) => `<li class="k-${x.kind}${x.shake ? " k-shake" : ""}"><span class="time">${hhmm(x.time)}</span> ${x.shake ? "🥤" : x.kind === "train" ? `<a href="#workouts" title="Open workout">🏋️</a>` : icon[x.kind] ?? "•"} ${x.recipe ? `<a href="#" data-open="${x.recipe}">${esc(x.label)}</a>` : x.routine ? `<a href="#workouts?v=stretch">${esc(x.label)}</a>` : esc(x.label)}${x.kcal ? ` <span class="muted">${x.kcal} kcal</span>` : ""}</li>`).join("")}</ul>
     </div>`).join("")}</div>
     <div class="box blue small" style="margin-top:12px"><b>Tips for gaining:</b> eat every 3–4 hours rather than forcing huge meals. Drink some of your calories (milk, smoothies) if you get full easily. Keep a protein source in every meal. If the scale hasn't moved after 2 weeks, add about 150 kcal a day.</div>`;
+}
+
+// ───── Schedule card (Goals step 3): commitments, commute, week at a glance, suggestions ─────
+function scheduleCard() {
+  const G = goals(), C = cmt();
+  const opt = (v, cur, l) => `<option value="${v}" ${String(v) === String(cur) ? "selected" : ""}>${l}</option>`;
+  const nBlocks = G.schedule.reduce((t, s) => t + (s.blocks || []).length, 0);
+  return `<div class="card" style="margin-top:16px"><h3>3 · Classes, work & commute</h3>
+    <p class="small muted" style="margin-top:0">Add your fixed commitments. The app finds your free time and suggests the best times to train, eat, cook and stretch around them.</p>
+    <div class="row blockadd">
+      <input id="bk-label" placeholder="Name, e.g. Calculus" style="width:150px">
+      <select id="bk-kind">${Object.entries(BLOCK_KINDS).map(([k, [ic, l]]) => opt(k, "class", `${ic} ${l}`)).join("")}</select>
+      <input type="time" id="bk-from" value="09:00"><span class="muted">to</span><input type="time" id="bk-to" value="10:15">
+      <span class="daypick">${DAYS.map((d, i) => `<label><input type="checkbox" data-bkday="${i}" ${i < 5 && i % 2 === 0 ? "checked" : ""}><span>${d}</span></label>`).join("")}</span>
+      <button class="btn primary" id="bk-add">+ Add</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label class="field">Commute each way <select id="cm-min">${[0, 10, 15, 20, 30, 45, 60, 75, 90].map((m) => opt(m, C.min, m ? `${m} min` : "none")).join("")}</select></label>
+      <label class="field">by <select id="cm-mode">${[["walk", "🚶 Walking"], ["bike", "🚲 Bike"], ["transit", "🚌 Bus / train"], ["car", "🚗 Car"]].map(([v, l]) => opt(v, C.mode, l)).join("")}</select></label>
+      <label class="field">I work out <select id="cm-gym">${[["home", "at home"], ["near-home", "at a gym near home"], ["campus", "at a gym on campus / near work"]].map(([v, l]) => opt(v, C.gym, l)).join("")}</select></label>
+    </div>
+    ${["walk", "bike"].includes(C.mode) && C.min ? `<p class="small" style="margin:4px 0">✅ Your ${C.mode === "bike" ? "bike" : "walking"} commute counts as cardio (WHO 150 min/week) and its calories are added to those days.</p>` : ""}
+    ${weekGlance()}
+    ${nBlocks ? `<div class="blocklist small">${G.schedule.map((s, i) => (s.blocks || []).length ? `<div><b>${DAYS[i]}</b> ${(s.blocks || []).slice().sort((a, b) => a.from.localeCompare(b.from)).map((b) => `<span class="chip">${BLOCK_KINDS[b.kind]?.[0] || ""} ${esc(b.label || BLOCK_KINDS[b.kind]?.[1] || "")} ${b.from}–${b.to} <a href="#" data-bkdel="${i}:${b.id}" title="Remove">✕</a></span>`).join("")}</div>` : "").join("")}</div>` : ""}
+    <div class="row" style="margin-top:12px">
+      <label class="field">Workouts per week <select id="sg-n">${[2, 3, 4, 5, 6].map((n) => opt(n, C.perWeek, n)).join("")}</select></label>
+      <button class="btn primary" id="sg-go">✨ Suggest my best times</button>
+      ${nBlocks ? `<button class="btn ghost sm" id="bk-clear">Clear all commitments</button>` : ""}
+    </div>
+    <div id="sg-out">${G.suggest ? renderSuggestion(G.suggest) : ""}</div>
+  </div>`;
+}
+function weekGlance() {
+  const G = goals();
+  const info = G.schedule.map((_, i) => dayInfo(i));
+  const lo = Math.floor(Math.min(...info.map((d) => d.wake)) / 60) * 60, hi = Math.ceil(Math.max(...info.map((d) => d.bed)) / 60) * 60, span = hi - lo;
+  const pos = (a, b) => `left:${((a - lo) / span) * 100}%;width:${Math.max(0.6, ((b - a) / span) * 100)}%`;
+  const hours = []; for (let h = lo; h <= hi; h += 120) hours.push(h);
+  const dot = (t, cls, title) => `<i class="gdot ${cls}" style="left:${((t - lo) / span) * 100}%" title="${esc(title)}"></i>`;
+  return `<div class="glance">
+    <span></span><div class="ghours">${hours.map((h) => `<span style="left:${((h - lo) / span) * 100}%">${hhmm(h)}</span>`).join("")}</div>
+    ${info.map((d, i) => `<b>${DAYS[i]}</b><div class="track">
+      <div class="gsleep" style="${pos(lo, d.wake)}"></div><div class="gsleep" style="${pos(d.bed, hi)}"></div>
+      ${d.busy.map((b) => `<div class="gblk g-${b.kind}" style="${pos(b.start, b.end)}" title="${esc(`${b.label} ${hhmm(b.start)}–${hhmm(b.end)}`)}">${b.end - b.start >= 50 ? esc(b.label) : ""}</div>`).join("")}
+      ${d.train ? `<div class="gblk g-train" style="${pos(d.train.start, d.train.end)}" title="Workout ${hhmm(d.train.start)}–${hhmm(d.train.end)}">🏋️</div>` : ""}
+      ${d.cardioMin && d.cardioAt != null ? `<div class="gblk g-cardio" style="${pos(d.cardioAt, d.cardioAt + d.cardioMin)}" title="${d.cardioMin}-min ${esc(cardioPlan().opt.name)}"></div>` : ""}
+      ${dot(d.meals.b, "meal", `Breakfast ${hhmm(d.meals.b)}`)}${dot(d.meals.l, "meal", `Lunch ${hhmm(d.meals.l)}${d.meals.lWhere === "packed" ? " (packed)" : ""}`)}${dot(d.meals.d, "meal", `Dinner ${hhmm(d.meals.d)}`)}
+      ${d.meals.snacks.map((t) => dot(t, "snack", `Snack ${hhmm(t)}`)).join("")}${d.meals.pre != null ? dot(d.meals.pre, "snack", `Pre-workout snack ${hhmm(d.meals.pre)}`) : ""}
+      ${d.stretch.map((s) => dot(s.t, "stretch", `${s.label} ${hhmm(s.t)}`)).join("")}
+    </div>`).join("")}
+    <span></span><div class="glegend small muted"><span class="g-class">class</span><span class="g-work">work</span><span class="g-study">study/online</span><span class="g-commute">commute</span><span class="g-train">workout</span><span class="g-cardio">cardio</span><span><i class="gdot meal"></i> meal</span><span><i class="gdot snack"></i> snack</span><span><i class="gdot stretch"></i> stretch</span><span class="gsleepl">asleep</span></div>
+  </div>`;
+}
+function renderSuggestion(S) {
+  const G = goals(), C = cmt();
+  const why = S.days.filter((d) => d.tr).map((d) => `<li><b>${DAYS[d.i]} ${hhmm(d.tr.start)}</b>: ${esc(d.tr.why.filter(Boolean).join("; ") || "best free window")}</li>`).join("");
+  return `<h3 style="margin-top:16px">✨ Suggested week <span class="small muted">(${S.n} workouts of ≈ ${S.dur} min)</span></h3>
+    ${S.notes.length ? `<div class="box amber small">${S.notes.map(esc).join("<br>")}</div>` : ""}
+    <div style="overflow-x:auto"><table class="sched sugg"><tr><th></th><th>🏋️ Workout</th><th>🍳 Breakfast</th><th>🍱 Lunch</th><th>🍽️ Dinner</th><th>🥜 Snacks</th><th>🔥 Cook</th><th>🧘 Stretch</th><th>😴 Sleep</th></tr>
+    ${S.days.map((d) => { const I = d.info, M = I.meals; return `<tr><th>${DAYS[d.i]}</th>
+      <td>${d.tr ? `<b>${hhmm(d.tr.start)}–${hhmm(d.tr.start + S.dur)}</b>` : `<span class="muted">rest${I.cardioMin ? ` · 🚶 ${I.cardioMin} min` : ""}</span>`}</td>
+      <td>${hhmm(M.b)}${M.bGrab ? " <span class='muted'>grab-and-go</span>" : ""}</td>
+      <td>${hhmm(M.l)} <span class="muted">${M.lWhere === "packed" ? "packed" : "home"}${M.lShort ? ", short break" : ""}</span></td>
+      <td>${hhmm(M.d)}${M.dWhere === "out" ? " <span class='muted'>out</span>" : ""}</td>
+      <td>${[...(M.pre != null ? [`${hhmm(M.pre)} pre`] : []), ...M.snacks.map(hhmm)].join(", ") || "–"}</td>
+      <td>${d.batch ? `<b>batch</b> ${fmtMin(d.cook)}${I.cook.at != null ? ` from ${hhmm(I.cook.at)}` : ""}` : d.cook ? `quick ${fmtMin(d.cook)}` : "leftovers"}</td>
+      <td class="small">${I.stretch.map((s) => `${hhmm(s.t)} ${s.routine}`).join("<br>") || "–"}${d.tr ? "<br>+ cool-down" : ""}</td>
+      <td class="${I.sleepH < 7 ? "warn" : ""}">${hhmm(I.bed)} · ${I.sleepH} h</td></tr>`; }).join("")}</table></div>
+    <details class="small" style="margin-top:8px"><summary>Why these times?</summary><ul>${why}
+      <li>Late afternoon/evening is when strength tends to peak, but morning and evening training build muscle equally — consistency wins (Grgic 2019).</li>
+      <li>Workouts end at least 1 hour before bed: vigorous exercise right before sleep is the only kind shown to disturb it (Stutz 2019).</li>
+      <li>Sessions are spread out so muscles recover 48 h+ between sessions; the same start time each day builds the habit.</li>
+      <li>Meals every 3–4 hours with protein (ISSN), a meal or shake within ~2 h after training (Schoenfeld 2013), dinner 2+ h before bed when possible.</li>
+      <li>Desk stretches break up 90+ minutes of sitting (WHO 2020); you batch-cook on the 2 days with the most free time (spread out so food stays fresh) and cook quickly or eat leftovers on the rest, using about half a free evening so you keep downtime${C.gym === "campus" ? "; training right after your last class saves a trip" : ""}.</li></ul></details>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="sg-apply">✅ Use these times</button><span class="small muted">Sets training days & times, cooking time and packed lunches below. Then press “Build my week”.</span></div>`;
+}
+function bindScheduleCard() {
+  const G = goals(), C = cmt(), re = () => { G.suggest = null; save(); renderGoals(); };
+  $("#bk-add").onclick = () => {
+    const from = $("#bk-from").value, to = $("#bk-to").value, days = $$("[data-bkday]").filter((c) => c.checked).map((c) => +c.dataset.bkday);
+    if (!from || !to || toMin(to) <= toMin(from)) return alert("End time must be after the start time.");
+    if (!days.length) return alert("Pick at least one day.");
+    for (const i of days) (G.schedule[i].blocks = G.schedule[i].blocks || []).push({ id: uid(), kind: $("#bk-kind").value, label: $("#bk-label").value.trim(), from, to });
+    re();
+  };
+  $$("[data-bkdel]").forEach((a) => a.onclick = (e) => { e.preventDefault(); const [i, id] = a.dataset.bkdel.split(":"); G.schedule[+i].blocks = G.schedule[+i].blocks.filter((b) => b.id !== id); re(); });
+  if ($("#bk-clear")) $("#bk-clear").onclick = () => { if (confirm("Remove all classes, work and commute blocks?")) { G.schedule.forEach((s) => (s.blocks = [])); re(); } };
+  $("#cm-min").onchange = (e) => { C.min = +e.target.value; re(); };
+  $("#cm-mode").onchange = (e) => { C.mode = e.target.value; re(); };
+  $("#cm-gym").onchange = (e) => { C.gym = e.target.value; re(); };
+  $("#sg-n").onchange = (e) => { C.perWeek = +e.target.value; save(); };
+  $("#sg-go").onclick = () => { G.suggest = suggestWeek(C.perWeek); save(); renderGoals(); $("#sg-out").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  if ($("#sg-apply")) $("#sg-apply").onclick = () => { applySuggestion(G.suggest); G.suggest = null; save(); renderGoals(); alert("Done — training days & times, cooking time and lunches are set. Press “Build my week” to plan meals around them."); };
 }
 
 function weighInSummary() {
@@ -1146,19 +1415,24 @@ function workoutForDay(i) {
 // WHO: 150+ min moderate cardio per week. Put brisk walks/rides on rest days; extra minutes after lifting.
 function cardioPlan() {
   const w = W(), td = trainingDays(), opt = window.CARDIO_OPTIONS[w.cardio] || window.CARDIO_OPTIONS.walk;
+  // a walking/cycling commute already counts toward the 150 minutes
+  const commuteDays = {}; let commuteTotal = 0;
+  for (let i = 0; i < 7; i++) { const m = activeCommuteMin(i); if (m) { commuteDays[i] = m; commuteTotal += m; } }
+  const need = Math.max(0, 150 - commuteTotal);
   const rest = [0, 1, 2, 3, 4, 5, 6].filter((i) => !td.includes(i));
-  const perRest = rest.length ? Math.min(45, Math.ceil(150 / rest.length / 5) * 5) : 0;
+  const perRest = rest.length && need ? Math.min(45, Math.max(10, Math.ceil(need / rest.length / 5) * 5)) : 0;
   const days = {};
-  rest.forEach((i) => (days[i] = perRest));
+  if (perRest) rest.forEach((i) => (days[i] = perRest));
   let total = perRest * rest.length;
-  if (total < 150 && td.length) { const extra = Math.ceil((150 - total) / td.length / 5) * 5; td.forEach((i) => (days[i] = extra)); total += extra * td.length; }
+  if (total < need && td.length) { const extra = Math.max(10, Math.ceil((need - total) / td.length / 5) * 5); td.forEach((i) => (days[i] = extra)); total += extra * td.length; }
   const kcalFor = (min) => Math.round((opt.met - 1) * goals().profile.weight * min / 60);
-  return { opt, days, total, kcalFor };
+  return { opt, days, total: total + commuteTotal, planned: total, commuteDays, commuteTotal, kcalFor };
 }
 // calories your training adds to a given weekday (used by Goals when auto is on)
 function exerciseKcalForDay(i) {
-  const wo = workoutForDay(i), c = cardioPlan();
-  return (wo ? wo.kcal : 0) + c.kcalFor(c.days[i] || 0);
+  const wo = workoutForDay(i), c = cardioPlan(), cm = activeCommuteMin(i);
+  const commuteKcal = cm ? Math.round((window.CARDIO_OPTIONS[cmt().mode === "bike" ? "cycle" : "walk"].met - 1) * goals().profile.weight * cm / 60) : 0;
+  return (wo ? wo.kcal : 0) + c.kcalFor(c.days[i] || 0) + commuteKcal;
 }
 
 // ───── favourites for exercises (same heart as recipes) ─────
@@ -1199,7 +1473,7 @@ function sparkline(vals, w = 160, h = 36) {
 }
 
 // ───── main Workouts screen with sub-sections ─────
-const WVIEWS = [["program", "📅 My program"], ["library", "📚 Exercises"], ["progress", "📈 Progress"], ["science", "🔬 Science"]];
+const WVIEWS = [["program", "📅 My program"], ["library", "📚 Exercises"], ["stretch", "🧘 Stretching"], ["progress", "📈 Progress"], ["science", "🔬 Science"]];
 function renderWorkouts() {
   W();
   const v = new URLSearchParams(location.hash.split("?")[1] || "").get("v") || "program";
@@ -1207,7 +1481,7 @@ function renderWorkouts() {
     <div class="row subnav">${WVIEWS.map(([k, l]) => `<a class="chip click ${v === k ? "on" : ""}" href="#workouts?v=${k}">${l}</a>`).join("")}
       <span class="spacer"></span><button class="btn primary" id="w-start">▶ Start today’s workout</button></div>
     <div id="wbody"></div>`;
-  ({ program: renderProgram, library: renderLibrary, progress: renderProgress, science: renderScience }[v] || renderProgram)();
+  ({ program: renderProgram, library: renderLibrary, stretch: renderStretching, progress: renderProgress, science: renderScience }[v] || renderProgram)();
   $("#w-start").onclick = () => {
     const today = (new Date().getDay() + 6) % 7, wo = workoutForDay(today), P = buildProgram();
     if (!P) return alert("Set your training days first (My program → Your week).");
@@ -1255,6 +1529,7 @@ function renderProgram() {
         <table class="sched">${G.schedule.map((s, i) => `<tr><th>${DAYS[i]}</th><td><label class="row small"><input type="checkbox" data-tday="${i}" ${s.train ? "checked" : ""}> Train</label></td>
           <td><input type="time" data-ttime="${i}" value="${s.trainAt}" ${s.train ? "" : "disabled"}></td>
           <td class="small muted">${s.train ? (workoutForDay(i)?.name || "") : C.days[i] ? `🚶 ${C.days[i]} min ${C.opt.name.toLowerCase()}` : "rest"}</td></tr>`).join("")}</table>
+        <p class="small" style="margin:8px 0 0">📆 Have classes, a job or a commute? <a href="#goals">Add them in Goals</a> and get suggested workout, meal and stretch times.</p>
         <label class="row small" style="margin-top:8px"><input type="checkbox" id="w-auto" ${w.autoKcal ? "checked" : ""}> Add workout & cardio calories to each day’s food target automatically</label>
         <div class="row" style="margin-top:10px"><button class="btn primary" id="w-apply">🔬 Apply science-based targets to Goals</button></div>
         <p class="small muted">Sets your calorie surplus (+${T.surplus} kcal ≈ ${T.ratePct}% body weight/week), protein (${T.protein} g/kg) and daily activity level, then you can rebuild your meal week.</p>
@@ -1274,7 +1549,7 @@ function renderProgram() {
     <p class="small muted" style="margin-top:-6px">Hard sets per muscle per week (secondary muscles count as ½). Target for you: ${T.weeklySets} for big muscles.</p>
     <div class="card">${Object.entries(window.MUSCLES).map(([m, label]) => { const val = Math.round(P.volume[m] * 2) / 2, t = P.targetFor(m); return `<div class="vrow"><span>${label}</span><div class="bar"><div style="width:${Math.min(100, (val / (t * 1.5)) * 100)}%;background:${val >= t * 0.8 ? "var(--green)" : "var(--amber)"}"></div></div><span class="small"><b>${val}</b> / ${t}</span></div>`; }).join("")}</div>
     <h2>🚶 Cardio & daily movement</h2>
-    <div class="card small">${C.total} min/week of ${C.opt.name.toLowerCase()} (WHO: 150–300). ${esc(C.opt.note)}
+    <div class="card small">${C.total} min/week of cardio (WHO: 150–300)${C.commuteTotal ? `, including ${C.commuteTotal} min from your ${cmt().mode === "bike" ? "bike" : "walking"} commute` : ""}. ${C.planned ? `Planned: ${C.opt.name.toLowerCase()}. ${esc(C.opt.note)}` : "Your commute covers it — nothing extra needed."}
       <div class="row" style="margin-top:6px">${Object.entries(C.days).map(([i, m]) => `<span class="chip">${DAYS[i]}: ${m} min</span>`).join("")}</div></div>
     <h2>🧰 Equipment for this program</h2>
     <div class="card small">${P.equipNeeded.map((q) => `<span class="chip">${esc(q)}</span>`).join("")}
@@ -1312,7 +1587,7 @@ function renderLibrary() {
       <select id="xf-muscle"><option value="">All muscles</option>${Object.entries(window.MUSCLES).map(([k, l]) => `<option value="${k}" ${f.muscle === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="xf-level"><option value="0">Any level</option>${[1, 2, 3].map((d) => `<option value="${d}" ${+f.level === d ? "selected" : ""}>${DIFF[d]}</option>`).join("")}</select>
       <label class="row small"><input type="checkbox" id="xf-mine" ${f.mine ? "checked" : ""}> Only what I can do (equipment & joints)</label></div>
-    <div class="row" style="margin-bottom:14px">${[["", "All"], ["fav", "♥ favorites"], ["squat", "Squat"], ["hinge", "Hinge"], ["hpush", "Push (horizontal)"], ["vpush", "Push (overhead)"], ["hpull", "Row"], ["vpull", "Pull-down / up"], ["lunge", "Lunge"], ["core", "Core"], ["balance", "Balance"]].map(([k, l]) => `<span class="chip click ${f.pattern === k ? "on" : ""}" data-xp="${k}">${l}</span>`).join("")}</div>
+    <div class="row" style="margin-bottom:14px">${[["", "All"], ["fav", "♥ favorites"], ["squat", "Squat"], ["hinge", "Hinge"], ["hpush", "Push (horizontal)"], ["vpush", "Push (overhead)"], ["hpull", "Row"], ["vpull", "Pull-down / up"], ["lunge", "Lunge"], ["fly", "Chest fly"], ["lateral", "Side delts"], ["rear", "Rear delts"], ["biceps", "Biceps"], ["triceps", "Triceps"], ["hamcurl", "Hamstring curl"], ["abduct", "Glute side"], ["calves", "Calves"], ["core", "Core"], ["balance", "Balance"]].map(([k, l]) => `<span class="chip click ${f.pattern === k ? "on" : ""}" data-xp="${k}">${l}</span>`).join("")}</div>
     <div class="grid">${list.map((e) => `<div class="card rcard" data-ex="${e.id}">${xheart(e.id)}
       <div class="name">${esc(e.name)}</div>
       <div class="native">${e.muscles.map((m) => window.MUSCLES[m]).join(", ") || "Balance"}</div>
@@ -1390,9 +1665,11 @@ function drawWM() {
     finishWorkout(); return;
   } else if (s.type === "warmup") {
     el.innerHTML = `${top}<div class="stepbig">${prog}<div class="stepnum" style="margin-top:20px">WARM-UP · ${s.min} MIN</div>
-      <div class="steptext">5 minutes of easy cardio (brisk walk, bike, skipping), then 1–2 light sets of your first exercise: ${esc(XBY[WM.session.items[0].id].name)}.</div>
-      <div class="row"><button class="btn" id="wm-timer">⏲ ${s.min}-min timer</button><span class="spacer"></span><button class="btn primary" id="wm-next">Start lifting →</button></div></div>`;
+      <div class="steptext">3 minutes of easy cardio, the dynamic warm-up, then 1–2 light sets of your first exercise: ${esc(XBY[WM.session.items[0].id].name)}.</div>
+      <div class="muted" style="color:#c9b8ae">${routineItems(STR_ROUT.warmup).map((x) => esc(x.name)).join(" · ")}</div>
+      <div class="row" style="margin-top:18px"><button class="btn" id="wm-timer">⏲ ${s.min}-min timer</button><button class="btn" id="wm-guided">🔥 Guided warm-up (${Math.round(routineSec(routineItems(STR_ROUT.warmup)) / 60)} min)</button><span class="spacer"></span><button class="btn primary" id="wm-next">Start lifting →</button></div></div>`;
     $("#wm-timer").onclick = () => startTimer("Warm-up", s.min);
+    $("#wm-guided").onclick = () => startStretchMode("Dynamic warm-up", routineItems(STR_ROUT.warmup), () => { WM.i++; drawWM(); });
     $("#wm-next").onclick = () => { WM.i++; drawWM(); };
   } else {
     const e = XBY[s.it.id], prev = [...WM.done].reverse().find((d) => d.ex === e.id), sw = prev ? prev.w : suggestWeight(e.id);
@@ -1437,8 +1714,108 @@ function finishWorkout(early) {
     <div class="steptext">${WM.done.length} sets · ${fmtMin(Math.max(1, minutes))}${volume ? ` · ${Math.round(volume).toLocaleString()} kg lifted` : " · bodyweight"}</div>
     ${prs.length ? `<div style="color:#f0a58f">🏆 New personal records: ${prs.map(esc).join(" · ")}</div>` : ""}
     <p class="muted" style="color:#c9b8ae">Now: eat a protein-rich meal or shake within a couple of hours, and sleep 7–9 h tonight.</p>
-    <div class="row" style="justify-content:center"><button class="btn primary" id="wm-close">Done</button></div></div>`;
+    <div class="row" style="justify-content:center"><button class="btn" id="wm-cool">🧘 Cool-down stretch (${Math.round(routineSec(cooldownFor(WM.session)) / 60)} min)</button><button class="btn primary" id="wm-close">Done</button></div></div>`;
+  const sessDone = WM.session;
+  $("#wm-cool").onclick = () => { WM = null; startStretchMode("Cool-down", cooldownFor(sessDone)); };
   $("#wm-close").onclick = () => { el.classList.add("hidden"); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } WM = null; location.hash = "#workouts?v=progress"; route(); };
+}
+
+// ───── Stretching: routines, cool-downs for what you trained, guided hold timer ─────
+const STR = window.STRETCHES || [], STR_BY = Object.fromEntries(STR.map((s) => [s.id, s]));
+const STR_ROUT = Object.fromEntries((window.STRETCH_ROUTINES || []).map((r) => [r.id, r]));
+const holdFor = (st) => (st.type === "static" && trainingProfile().older ? Math.max(st.sec, 45) : st.sec);   // 30–60 s for older adults (ACSM)
+const okStretch = (st) => !(st.kneel && W().limits.includes("knee"));
+const routineItems = (r) => r.items.map((id) => STR_BY[id]).filter((s) => s && okStretch(s));
+const routineSec = (items) => items.reduce((t, s) => t + holdFor(s) * (s.sides ? 2 : 1) + 5, 0);
+function cooldownFor(session) {
+  const trained = [...new Set(session.items.flatMap((it) => XBY[it.id].muscles))];
+  const pool = STR.filter((s) => s.type === "static" && okStretch(s)), out = [];
+  for (const m of trained) { const st = pool.find((s) => s.area.includes(m) && !out.includes(s)); if (st && out.length < 6) out.push(st); }
+  if (out.length < 3) for (const id of ["hamstring-stretch", "chest-doorway", "childs-pose"]) if (out.length < 4 && STR_BY[id] && okStretch(STR_BY[id]) && !out.includes(STR_BY[id])) out.push(STR_BY[id]);
+  return out;
+}
+let SM = null;
+function startStretchMode(name, items, onDone) {
+  const steps = [];
+  for (const st of items) for (const side of st.sides ? ["left side", "right side"] : [""]) steps.push({ st, side, sec: holdFor(st) });
+  if (!steps.length) return;
+  SM = { name, steps, i: 0, phase: "ready", end: Date.now() + 5000, left: 0, paused: false, started: Date.now(), timer: null, onDone };
+  if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request("screen").then((x) => (wakeLock = x)).catch(() => {});
+  drawSM();
+}
+function drawSM() {
+  const el = $("#cookmode"); el.classList.remove("hidden"); clearInterval(SM.timer);
+  const s = SM.steps[SM.i];
+  if (!s) return finishStretch();
+  const next = SM.steps[SM.i + 1];
+  el.innerHTML = `<div class="top"><b>🧘 ${esc(SM.name)}</b><span class="spacer"></span><span class="muted">${SM.i + 1} / ${SM.steps.length}</span><button class="btn" id="sm-exit">✕ ${SM.onDone ? "Skip" : "End"}</button></div>
+    <div class="stepbig" style="text-align:center"><div class="progress"><div style="width:${(SM.i / SM.steps.length) * 100}%"></div></div>
+      <div class="stepnum" style="margin-top:22px">${SM.phase === "ready" ? "GET READY" : s.st.type === "dynamic" ? "KEEP MOVING" : s.st.type === "relax" ? "BREATHE" : "HOLD — RELAX INTO IT"}</div>
+      <div class="steptext">${esc(s.st.name)}${s.side ? ` <span style="color:#f0a58f">· ${s.side}</span>` : ""}</div>
+      <div class="resttime" id="sm-t"></div>
+      <div class="muted" style="color:#c9b8ae;max-width:640px;margin:0 auto">${s.st.how.map(esc).join(" ")}<br><b>${esc(s.st.cue)}</b></div>
+      <div class="muted small" style="margin-top:10px">Next: ${next ? esc(next.st.name + (next.side ? ` (${next.side})` : "")) : "done"}</div>
+      <div class="row" style="justify-content:center;margin-top:20px"><button class="btn" id="sm-back" ${SM.i ? "" : "disabled"}>←</button><button class="btn" id="sm-pause">${SM.paused ? "▶ Resume" : "⏸ Pause"}</button><button class="btn primary" id="sm-skip">Next →</button></div></div>`;
+  const go = (k) => { SM.i = k; SM.phase = "ready"; SM.end = Date.now() + (SM.steps[k] && SM.steps[k].st === s.st ? 2000 : 5000); SM.paused = false; drawSM(); };
+  const tick = () => {
+    if (SM.paused) return;
+    const left = Math.max(0, Math.ceil((SM.end - Date.now()) / 1000)), t = $("#sm-t");
+    if (t) t.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    if (!left) { beep(); if (SM.phase === "ready") { SM.phase = "hold"; SM.end = Date.now() + s.sec * 1000; drawSM(); } else go(SM.i + 1); }
+  };
+  if (SM.paused) { const t = $("#sm-t"); if (t) t.textContent = `${Math.floor(SM.left / 60)}:${String(SM.left % 60).padStart(2, "0")}`; } else { tick(); SM.timer = setInterval(tick, 250); }
+  $("#sm-pause").onclick = () => { if (SM.paused) { SM.end = Date.now() + SM.left * 1000; SM.paused = false; } else { SM.left = Math.max(0, Math.ceil((SM.end - Date.now()) / 1000)); SM.paused = true; } drawSM(); };
+  $("#sm-skip").onclick = () => go(SM.i + 1);
+  $("#sm-back").onclick = () => go(Math.max(0, SM.i - 1));
+  $("#sm-exit").onclick = () => finishStretch(true);
+}
+function finishStretch(early) {
+  clearInterval(SM.timer);
+  const sm = SM, minutes = Math.max(1, Math.round((Date.now() - sm.started) / 60000)), el = $("#cookmode");
+  SM = null;
+  if (sm.onDone) return sm.onDone();
+  if (!early || sm.i >= 3) { const w = W(); (w.stretchLog = w.stretchLog || []).push({ date: ymd(new Date()), name: sm.name, minutes }); save(); }
+  el.innerHTML = `<div class="stepbig" style="text-align:center"><div class="stepnum">${early ? "STRETCH ENDED" : "NICELY DONE"} 🧘</div>
+    <div class="steptext">${esc(sm.name)} · ${fmtMin(minutes)}</div>
+    <p class="muted" style="color:#c9b8ae">Daily stretching gives the best flexibility gains; 2–3 times a week is the minimum (ACSM).</p>
+    <div class="row" style="justify-content:center"><button class="btn primary" id="sm-close">Done</button></div></div>`;
+  $("#sm-close").onclick = () => { el.classList.add("hidden"); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } if (location.hash.startsWith("#workouts")) route(); };
+}
+let strFilter = "";
+function renderStretching() {
+  const w = W(), T = trainingProfile(), hold = T.older ? 45 : 30;
+  const today = (new Date().getDay() + 6) % 7, wo = workoutForDay(today), P = buildProgram();
+  const coolSess = wo ? wo.session : P ? P.week[0] : null;
+  const wkStart = ymd(mondayOf(new Date())), thisWeek = (w.stretchLog || []).filter((l) => l.date >= wkStart).length;
+  const card = (id, icon, name, when, items, why) => `<div class="card"><div class="row"><b style="font-size:17px">${icon} ${esc(name)}</b><span class="spacer"></span><span class="chip">≈ ${Math.max(1, Math.round(routineSec(items) / 60))} min</span></div>
+    <div class="small muted">${esc(when)}</div>
+    <div class="small" style="margin:8px 0">${items.map((s) => esc(s.name) + (s.sides ? " (each side)" : "")).join(" · ")}</div>
+    <div class="small muted">${esc(why)}</div>
+    <button class="btn primary sm" style="margin-top:8px" data-sr="${id}">▶ Start</button></div>`;
+  const list = STR.filter((s) => !strFilter || s.type === strFilter);
+  $("#wbody").innerHTML = `
+    <div class="box blue small"><b>For you:</b> hold static stretches about <b>${hold} s</b>${T.older ? " (30–60 s is recommended over 65)" : ""}, about 60 s in total per muscle. Do moving (dynamic) stretches before lifting and held stretches after training or any time. Stretch 2–3+ days a week — daily is best. It improves flexibility and feels good, but won’t prevent next-day soreness.
+      <div style="margin-top:4px">This week: <b>${thisWeek}</b> stretch session${thisWeek === 1 ? "" : "s"} ${thisWeek >= 3 ? "✅" : `(aim for 3+)`}. ${w.limits.includes("knee") ? "Kneeling stretches are left out because you flagged your knees." : ""}</div></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));margin-top:14px">
+      ${coolSess ? card("cooldown", "❄️", `Cool-down after ${coolSess.name}`, "Right after today’s workout — targets the muscles you trained", cooldownFor(coolSess), "Static holds while your muscles are warm, then slow breathing to wind down.") : ""}
+      ${(window.STRETCH_ROUTINES || []).map((r) => card(r.id, r.icon, r.name, r.when, routineItems(r), r.why)).join("")}
+    </div>
+    <h2>Stretch library <span class="small muted">(${STR.length})</span></h2>
+    <div class="row" style="margin-bottom:12px">${[["", "All"], ["dynamic", "Dynamic (before training)"], ["static", "Static (after / any time)"], ["relax", "Relax"]].map(([k, l]) => `<span class="chip click ${strFilter === k ? "on" : ""}" data-sf="${k}">${l}</span>`).join("")}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${list.map((s) => `<div class="card">
+      <div class="row"><b>${esc(s.name)}</b><span class="spacer"></span><span class="chip ${s.type === "dynamic" ? "diff-2" : s.type === "relax" ? "diff-1" : ""}">${s.type}</span></div>
+      <div class="small muted">${s.area.map((m) => window.MUSCLES[m] || m).join(", ") || "Neck & relaxation"} · ${holdFor(s)} s${s.sides ? " each side" : ""}${s.kneel ? " · kneeling" : ""}</div>
+      <ol class="small" style="padding-left:18px;margin:6px 0">${s.how.map((h) => `<li>${esc(h)}</li>`).join("")}</ol>
+      <div class="small">💡 ${esc(s.cue)}</div>
+      <button class="btn sm ghost" data-s1="${s.id}" ${okStretch(s) ? "" : "disabled title='Skipped: kneeling (knees flagged)'"}>▶ Do this one</button></div>`).join("")}</div>
+    <p class="small muted">Research: ${["flex", "behm", "doms"].map((k) => { const e = (window.TRAINING_EVIDENCE || []).find((x) => x.key === k); return e ? `<a href="https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(e.q)}" target="_blank" rel="noopener">${esc(e.cite.split(" (")[0])} ${e.cite.match(/\((\d{4})\)/)?.[1]} ↗</a>` : ""; }).join(" · ")}. More on the <a href="#workouts?v=science">🔬 Science</a> page.</p>`;
+  $$("[data-sr]").forEach((b) => b.onclick = () => {
+    const id = b.dataset.sr;
+    if (id === "cooldown") return startStretchMode("Cool-down", cooldownFor(coolSess));
+    startStretchMode(STR_ROUT[id].name, routineItems(STR_ROUT[id]));
+  });
+  $$("[data-s1]").forEach((b) => b.onclick = () => startStretchMode(STR_BY[b.dataset.s1].name, [STR_BY[b.dataset.s1]]));
+  $$("[data-sf]").forEach((c) => c.onclick = () => { strFilter = c.dataset.sf; renderStretching(); });
 }
 
 function renderProgress() {
@@ -1451,12 +1828,15 @@ function renderProgress() {
   const maxW = Math.max(1, ...last8.map((k) => weeks[k] || 0), planned);
   const exs = Object.keys(w.log).filter((id) => XBY[id] && w.log[id].length);
   const badges = [["🥇 First workout", S.length >= 1], ["🔟 10 workouts", S.length >= 10], ["🏅 25 workouts", S.length >= 25], ["💯 100 workouts", S.length >= 100],
-    ["🔥 4-week streak", streak >= 4], ["🏆 First PR", S.some((s) => s.prs?.length)], ["✅ WHO strength week (2+ sessions)", Object.values(weeks).some((n) => n >= 2)], ["📚 Tried 15 exercises", exs.length >= 15]];
+    ["🔥 4-week streak", streak >= 4], ["🏆 First PR", S.some((s) => s.prs?.length)], ["✅ WHO strength week (2+ sessions)", Object.values(weeks).some((n) => n >= 2)], ["📚 Tried 15 exercises", exs.length >= 15],
+    ["🧘 First stretch session", (w.stretchLog || []).length >= 1], ["🤸 Stretched 3× in a week", Object.values((w.stretchLog || []).reduce((m, l) => ((m[weekKey(l.date)] = (m[weekKey(l.date)] || 0) + 1), m), {})).some((n) => n >= 3)]];
+  const stretchWeek = (w.stretchLog || []).filter((l) => weekKey(l.date) === last8[7]).length;
   $("#wbody").innerHTML = `
     <div class="summary">
       <div class="stat"><div class="k">This week</div><div class="v">${thisWeek} / ${planned || "–"} sessions</div></div>
       <div class="stat"><div class="k">Streak</div><div class="v">${streak} week${streak === 1 ? "" : "s"}</div></div>
       <div class="stat"><div class="k">Total workouts</div><div class="v">${S.length}</div></div>
+      <div class="stat"><div class="k">Stretching this week</div><div class="v">${stretchWeek} / 3+</div></div>
       <div class="stat"><div class="k">Lifted (all time)</div><div class="v">${Math.round(S.reduce((t, s) => t + (s.volume || 0), 0)).toLocaleString()} kg</div></div>
     </div>
     <h2>Sessions per week</h2>
@@ -1489,6 +1869,9 @@ function renderScience() {
     ["Cardio", `${cardioPlan().total} min/week of ${cardioPlan().opt.name.toLowerCase()}`, `Healthy heart & longevity: 150–300 min/week. Walking or cycling barely interferes with muscle gain; long running does more.`, ["who", "concurrent"]],
     ["Calories burned training", `≈ ${sessionKcal(w.sessionMin)} kcal per ${w.sessionMin}-min session`, `Estimated from MET values; ${w.autoKcal ? "added to your food target on those days." : "turn on auto-add in My program to eat them back."}`, ["met"]],
     ...(T.older ? [["Balance", "2 balance exercises in each session", "Adults 65+ should add balance and strength work 3+ days a week to prevent falls.", ["who"]]] : []),
+    ["Stretching", `Dynamic warm-up before lifting; ${T.older ? 45 : 30}-s static holds after or any time, 2–3+ days/week`, `Static holds under ~60 s per muscle barely affect strength, so long holds go after training. Stretching improves flexibility but doesn’t prevent soreness.`, ["flex", "behm", "doms"]],
+    ["Best time to train", "Whenever you can be consistent — late afternoon if free; ends 1+ h before bed", `Morning and evening training build muscle and strength equally; strength is a little higher later in the day. Only hard exercise right before bed disturbs sleep. Goals → step 3 picks your times around classes and commute.`, ["tod", "sleepex"]],
+    ["Meal timing", "Protein every 3–4 h; a meal or shake within ~2 h after training", `Total daily protein matters most; there’s no narrow “anabolic window”, but eating protein around training is an easy win.`, ["timing", "issn"]],
     ["Sleep", "7–9 hours a night", "Recovery, hormones and appetite all depend on it.", ["sleep"]],
   ];
   $("#wbody").innerHTML = `

@@ -250,3 +250,30 @@ table.sci td { padding: 10px; border-bottom: 1px solid var(--line); vertical-ali
 table.sci td.yours { color: var(--accent); font-weight: 700; white-space: nowrap; }
 @media (max-width: 760px) { table.sci td.yours { white-space: normal; } .vrow { grid-template-columns: 110px 1fr 56px; } }
 .spark { vertical-align: middle; }
+
+/* ── schedule: classes, commute, week at a glance ── */
+.blockadd { gap: 8px; }
+.daypick { display: inline-flex; gap: 2px; }
+.daypick label { cursor: pointer; }
+.daypick input { display: none; }
+.daypick span { display: inline-block; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--muted); background: #fff; }
+.daypick input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
+.blocklist { margin-top: 8px; display: grid; gap: 4px; }
+.blocklist .chip a { text-decoration: none; color: var(--red); margin-left: 4px; }
+.glance { display: grid; grid-template-columns: 40px 1fr; gap: 5px 8px; align-items: center; font-size: 12px; margin-top: 14px; }
+.glance .track { position: relative; height: 26px; background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.ghours { position: relative; height: 14px; }
+.ghours span { position: absolute; transform: translateX(-50%); color: var(--muted); font-size: 10px; }
+.gsleep { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, #ece6f3, #ece6f3 4px, #f5f1f9 4px, #f5f1f9 8px); }
+.gblk { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; font-size: 10px; color: #fff; overflow: hidden; white-space: nowrap; padding: 0 3px; line-height: 20px; }
+.g-class { background: var(--blue); } .g-work { background: #7a4fb0; } .g-other { background: var(--amber); }
+.g-online, .g-study { background: #2c8c8c; } .g-commute { background: #9a8f87; } .g-train { background: var(--accent); text-align: center; } .g-cardio { background: var(--green); opacity: .75; }
+.gdot { position: absolute; top: 50%; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+.gdot.meal { background: var(--green); } .gdot.snack { background: var(--amber); width: 7px; height: 7px; margin: -4px 0 0 -4px; } .gdot.stretch { background: #2c8c8c; width: 7px; height: 7px; margin: -4px 0 0 -4px; border-radius: 2px; }
+.glegend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.glegend > span[class^="g-"] { color: #fff; padding: 1px 6px; border-radius: 4px; }
+.glegend .gdot { position: static; display: inline-block; margin: 0 2px 0 0; vertical-align: middle; }
+.glegend .gsleepl { padding: 1px 6px; border-radius: 4px; background: #ece6f3; }
+table.sugg td.warn { color: var(--red); font-weight: 700; }
+ul.tl li.k-busy { color: var(--muted); }
+ul.tl li.k-stretch { color: #2c8c8c; }
